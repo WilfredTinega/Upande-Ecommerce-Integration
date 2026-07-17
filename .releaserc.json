@@ -1,0 +1,33 @@
+{
+  "branches": ["main"],
+  "tagFormat": "v${version}",
+  "plugins": [
+    [
+      "@semantic-release/commit-analyzer",
+      {
+        "preset": "angular",
+        "releaseRules": [
+          { "breaking": true, "release": false }
+        ]
+      }
+    ],
+    [
+      "@semantic-release/release-notes-generator",
+      { "preset": "angular" }
+    ],
+    [
+      "@semantic-release/exec",
+      {
+        "prepareCmd": "sed -ri \"s/[0-9]+\\.[0-9]+\\.[0-9]+/${nextRelease.version}/\" ecommerce_integration/__init__.py"
+      }
+    ],
+    [
+      "@semantic-release/git",
+      {
+        "assets": ["ecommerce_integration/__init__.py"],
+        "message": "chore(release): Bumped to Version ${nextRelease.version}\n\n${nextRelease.notes}"
+      }
+    ],
+    "@semantic-release/github"
+  ]
+}

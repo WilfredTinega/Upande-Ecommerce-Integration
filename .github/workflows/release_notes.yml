@@ -1,42 +1,44 @@
 # This action:
+#   1. Generates release notes using the GitHub API.
+#   2. Strips housekeeping commits (chore/ci/test/docs/style) and "by @mergify"
+#      attribution from the notes.
+#   3. Updates the release body with the cleaned notes.
 #
-# 1. Generates release notes using github API.
-# 2. Strips unnecessary info like chore/style etc from notes.
-# 3. Updates release info.
+# Runs automatically when a release is published, or on demand via
+# "Run workflow" (workflow_dispatch) for a given tag.
 
-# This action needs to be maintained on all branches that do releases.
-
-name: 'Release Notes'
+name: "Release Notes"
 
 on:
   workflow_dispatch:
     inputs:
       tag_name:
-        description: 'Tag of release like v1.0.0'
+        description: "Tag of release like v1.2.0"
         required: true
         type: string
   release:
     types: [released]
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   regen-notes:
-    name: 'Regenerate release notes'
+    name: "Regenerate release notes"
     runs-on: ubuntu-latest
-
     steps:
-    - name: Update notes
-      run: |
-        NEW_NOTES=$(gh api --method POST -H "Accept: application/vnd.github+json"  /repos/${{ github.repository }}/releases/generate-notes  -f tag_name=$RELEASE_TAG \
-          | jq -r '.body' \
-          | sed -E '/^\* (chore|ci|test|docs|style)/d' \
-          | sed -E 's/by @mergify //'
-        )
-        RELEASE_ID=$(gh api -H "Accept: application/vnd.github+json" /repos/${{ github.repository }}/releases/tags/$RELEASE_TAG | jq -r '.id')
-        gh api --method PATCH -H "Accept: application/vnd.github+json" /repos/${{ github.repository }}/releases/$RELEASE_ID -f body="$NEW_NOTES"
-
-      env:
-        GH_TOKEN: ${{ secrets.RELEASE_TOKEN }}
-        RELEASE_TAG: ${{ github.event.inputs.tag_name || github.event.release.tag_name }}
+      - name: Update notes
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.event.inputs.tag_name || github.event.release.tag_name }}
+        run: |
+          NEW_NOTES=$(gh api --method POST -H "Accept: application/vnd.github+json" \
+            /repos/$REPO/releases/generate-notes -f tag_name="$RELEASE_TAG" \
+            | jq -r '.body' \
+            | sed -E '/^\* (chore|ci|test|docs|style)/d' \
+            | sed -E 's/by @mergify //')
+          RELEASE_ID=$(gh api -H "Accept: application/vnd.github+json" \
+            /repos/$REPO/releases/tags/$RELEASE_TAG | jq -r '.id')
+          gh api --method PATCH -H "Accept: application/vnd.github+json" \
+            /repos/$REPO/releases/$RELEASE_ID -f body="$NEW_NOTES"

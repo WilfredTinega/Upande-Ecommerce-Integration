@@ -1,0 +1,616 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "creation": "2026-06-17 16:24:31.121623",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "stocks_tab",
+  "offer_stock_section",
+  "refresh_stock",
+  "column_break_veun",
+  "publish_enabled_stock_only",
+  "column_break_kyhj",
+  "use_shelf_stock",
+  "section_break_zkbh",
+  "stock_items",
+  "stock_source_section",
+  "shelf_stock_actions",
+  "offers_tab",
+  "offer_enabled",
+  "offer_event_frequency",
+  "offer_cron_format",
+  "column_break_offer",
+  "post_offers",
+  "live_offers_section",
+  "get_offers",
+  "live_offers",
+  "offer_scheduler_section",
+  "offer_last_run",
+  "offer_column_break_runtime",
+  "offer_next_run",
+  "deals_tab",
+  "deals_enabled",
+  "deals_event_frequency",
+  "deals_cron_format",
+  "column_break_deals",
+  "get_deals",
+  "get_predeals",
+  "approve_deal",
+  "deals_filter_section",
+  "deals_from_date",
+  "deals_to_date",
+  "deals_mutation_date",
+  "deals_offset",
+  "deals_limit",
+  "column_break_dcjx",
+  "deals_company",
+  "deals_customer",
+  "deals_business_unit",
+  "deals_farm",
+  "deals_source_warehouse",
+  "deals_consignee",
+  "deals_scheduler_section",
+  "deals_last_run",
+  "deals_column_break_runtime",
+  "deals_next_run",
+  "predeals_tab",
+  "predeal_event_frequency",
+  "predeal_cron_format",
+  "column_break_predeal",
+  "predeal_enabled",
+  "predeal_filter_section",
+  "predeal_from_date",
+  "predeal_to_date",
+  "predeal_mutation_date",
+  "column_break_predeal_filter",
+  "predeal_limit",
+  "predeal_offset",
+  "predeal_scheduler_section",
+  "predeal_last_run",
+  "predeal_column_break_runtime",
+  "predeal_next_run",
+  "biflorica_settings_tab",
+  "section_break_setting",
+  "username",
+  "password",
+  "base_url",
+  "warehouse",
+  "platform",
+  "farm",
+  "column_break_pvmj",
+  "access_token",
+  "settings_tab",
+  "token_url",
+  "column_break_at",
+  "at_event_frequency",
+  "at_cron_format",
+  "column_break_at_2",
+  "at_enabled",
+  "update_access_token",
+  "at_scheduler_section",
+  "at_last_run",
+  "at_column_break_runtime",
+  "at_next_run",
+  "actions_tab",
+  "custom_fields_section",
+  "custom_fields_status_html",
+  "create_custom_fields"
+ ],
+ "fields": [
+  {
+   "fieldname": "offers_tab",
+   "fieldtype": "Tab Break",
+   "label": "Offers"
+  },
+  {
+   "fieldname": "offer_event_frequency",
+   "fieldtype": "Select",
+   "label": "Event Frequency",
+   "options": "All\nHourly\nDaily\nWeekly\nMonthly\nYearly\nHourly Long\nDaily Long\nWeekly Long\nMonthly Long\nCron"
+  },
+  {
+   "depends_on": "eval:doc.offer_event_frequency == \"Cron\"",
+   "fieldname": "offer_cron_format",
+   "fieldtype": "Data",
+   "label": "Cron Format"
+  },
+  {
+   "fieldname": "column_break_offer",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "0",
+   "fieldname": "offer_enabled",
+   "fieldtype": "Check",
+   "label": "Enabled"
+  },
+  {
+   "fieldname": "post_offers",
+   "fieldtype": "Button",
+   "label": "Post Offers"
+  },
+  {
+   "fieldname": "get_offers",
+   "fieldtype": "Button",
+   "label": "Live Offers"
+  },
+  {
+   "fieldname": "refresh_stock",
+   "fieldtype": "Button",
+   "label": "Refresh Stock"
+  },
+  {
+   "depends_on": "eval:doc.use_shelf_stock",
+   "fieldname": "stock_source_section",
+   "fieldtype": "Section Break",
+   "label": "Shelf Stock "
+  },
+  {
+   "default": "0",
+   "fieldname": "use_shelf_stock",
+   "fieldtype": "Check",
+   "label": "Use Shelf Stock?"
+  },
+  {
+   "default": "0",
+   "fieldname": "publish_enabled_stock_only",
+   "fieldtype": "Check",
+   "label": "Show Only Enabled Stock?"
+  },
+  {
+   "fieldname": "shelf_stock_actions",
+   "fieldtype": "HTML",
+   "label": "Shelf Stock Actions"
+  },
+  {
+   "fieldname": "offer_stock_section",
+   "fieldtype": "Section Break",
+   "label": "Stock Available for Offers"
+  },
+  {
+   "depends_on": "eval:doc.use_shelf_stock===0",
+   "fieldname": "stock_items",
+   "fieldtype": "Table",
+   "label": "Stock Items",
+   "options": "Biflorica Stock View",
+   "read_only": 1
+  },
+  {
+   "fieldname": "live_offers_section",
+   "fieldtype": "Section Break",
+   "label": "Live Offers on Biflorica"
+  },
+  {
+   "fieldname": "live_offers",
+   "fieldtype": "Table",
+   "options": "Biflorica Offer View",
+   "read_only": 1
+  },
+  {
+   "fieldname": "offer_scheduler_section",
+   "fieldtype": "Section Break",
+   "label": "Scheduler Run Time"
+  },
+  {
+   "fieldname": "offer_last_run",
+   "fieldtype": "Datetime",
+   "label": "Last Run",
+   "read_only": 1
+  },
+  {
+   "fieldname": "offer_column_break_runtime",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "offer_next_run",
+   "fieldtype": "Datetime",
+   "label": "Next Run",
+   "read_only": 1
+  },
+  {
+   "fieldname": "deals_tab",
+   "fieldtype": "Tab Break",
+   "label": "Deals"
+  },
+  {
+   "fieldname": "deals_event_frequency",
+   "fieldtype": "Select",
+   "label": "Event Frequency",
+   "options": "All\nHourly\nDaily\nWeekly\nMonthly\nYearly\nHourly Long\nDaily Long\nWeekly Long\nMonthly Long\nCron"
+  },
+  {
+   "depends_on": "eval:doc.deals_event_frequency == \"Cron\"",
+   "fieldname": "deals_cron_format",
+   "fieldtype": "Data",
+   "label": "Cron Format"
+  },
+  {
+   "fieldname": "column_break_deals",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "0",
+   "fieldname": "deals_enabled",
+   "fieldtype": "Check",
+   "label": "Enabled"
+  },
+  {
+   "collapsible": 1,
+   "fieldname": "deals_filter_section",
+   "fieldtype": "Section Break",
+   "label": "Filters"
+  },
+  {
+   "fieldname": "deals_from_date",
+   "fieldtype": "Datetime",
+   "label": "From Date"
+  },
+  {
+   "fieldname": "deals_to_date",
+   "fieldtype": "Datetime",
+   "label": "To Date"
+  },
+  {
+   "fieldname": "deals_mutation_date",
+   "fieldtype": "Datetime",
+   "label": "Mutation Date"
+  },
+  {
+   "fieldname": "deals_limit",
+   "fieldtype": "Int",
+   "label": "Limit"
+  },
+  {
+   "fieldname": "deals_offset",
+   "fieldtype": "Int",
+   "label": "Offset"
+  },
+  {
+   "fieldname": "deals_customer",
+   "fieldtype": "Link",
+   "label": "Deals Customer",
+   "options": "Customer"
+  },
+  {
+   "fieldname": "deals_company",
+   "fieldtype": "Link",
+   "label": "Deals Company",
+   "options": "Company"
+  },
+  {
+   "fieldname": "deals_business_unit",
+   "fieldtype": "Link",
+   "label": "Deals Business Unit",
+   "options": "Business Unit"
+  },
+  {
+   "fieldname": "deals_farm",
+   "fieldtype": "Link",
+   "label": "Deals Farm",
+   "options": "Farm"
+  },
+  {
+   "fieldname": "deals_source_warehouse",
+   "fieldtype": "Link",
+   "label": "Deals Source Warehouse",
+   "options": "Warehouse"
+  },
+  {
+   "fieldname": "deals_consignee",
+   "fieldtype": "Link",
+   "label": "Deals Consignee",
+   "options": "Consignee"
+  },
+  {
+   "fieldname": "get_deals",
+   "fieldtype": "Button",
+   "label": "Deals"
+  },
+  {
+   "fieldname": "approve_deal",
+   "fieldtype": "Button",
+   "label": "Approve PreDeals"
+  },
+  {
+   "fieldname": "deals_scheduler_section",
+   "fieldtype": "Section Break",
+   "label": "Scheduler Run Time"
+  },
+  {
+   "fieldname": "deals_last_run",
+   "fieldtype": "Datetime",
+   "label": "Last Run",
+   "read_only": 1
+  },
+  {
+   "fieldname": "deals_column_break_runtime",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "deals_next_run",
+   "fieldtype": "Datetime",
+   "label": "Next Run",
+   "read_only": 1
+  },
+  {
+   "fieldname": "get_predeals",
+   "fieldtype": "Button",
+   "label": "Predeals"
+  },
+  {
+   "fieldname": "biflorica_settings_tab",
+   "fieldtype": "Tab Break",
+   "label": "Biflorica Settings"
+  },
+  {
+   "collapsible": 1,
+   "fieldname": "section_break_setting",
+   "fieldtype": "Section Break",
+   "label": "Api Credentials"
+  },
+  {
+   "fieldname": "username",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Username",
+   "reqd": 1
+  },
+  {
+   "fieldname": "password",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Password",
+   "reqd": 1
+  },
+  {
+   "fieldname": "base_url",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Base URL",
+   "reqd": 1
+  },
+  {
+   "fieldname": "warehouse",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Warehouse",
+   "options": "Warehouse",
+   "reqd": 1
+  },
+  {
+   "fieldname": "platform",
+   "fieldtype": "Data",
+   "label": "Platform",
+   "reqd": 1
+  },
+  {
+   "fieldname": "farm",
+   "fieldtype": "Data",
+   "label": "Farm"
+  },
+  {
+   "fieldname": "column_break_pvmj",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "access_token",
+   "fieldtype": "Long Text",
+   "label": "Access Token"
+  },
+  {
+   "fieldname": "settings_tab",
+   "fieldtype": "Tab Break",
+   "label": "Settings"
+  },
+  {
+   "fieldname": "token_url",
+   "fieldtype": "Data",
+   "label": "Token URL"
+  },
+  {
+   "fieldname": "update_access_token",
+   "fieldtype": "Button",
+   "label": "Update Access Token"
+  },
+  {
+   "fieldname": "column_break_at",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "at_event_frequency",
+   "fieldtype": "Select",
+   "label": "Event Frequency",
+   "options": "All\nHourly\nDaily\nWeekly\nMonthly\nYearly\nHourly Long\nDaily Long\nWeekly Long\nMonthly Long\nCron"
+  },
+  {
+   "depends_on": "eval:doc.at_event_frequency == \"Cron\"",
+   "fieldname": "at_cron_format",
+   "fieldtype": "Data",
+   "label": "Cron Format"
+  },
+  {
+   "fieldname": "column_break_at_2",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "0",
+   "fieldname": "at_enabled",
+   "fieldtype": "Check",
+   "label": "Enabled"
+  },
+  {
+   "fieldname": "at_scheduler_section",
+   "fieldtype": "Section Break",
+   "label": "Scheduler Run Time"
+  },
+  {
+   "fieldname": "at_last_run",
+   "fieldtype": "Datetime",
+   "label": "Last Run",
+   "read_only": 1
+  },
+  {
+   "fieldname": "at_column_break_runtime",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "at_next_run",
+   "fieldtype": "Datetime",
+   "label": "Next Run",
+   "read_only": 1
+  },
+  {
+   "fieldname": "stocks_tab",
+   "fieldtype": "Tab Break",
+   "label": "Stocks"
+  },
+  {
+   "fieldname": "column_break_veun",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "section_break_zkbh",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "column_break_dcjx",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "column_break_kyhj",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "actions_tab",
+   "fieldtype": "Tab Break",
+   "label": "Actions"
+  },
+  {
+   "fieldname": "custom_fields_section",
+   "fieldtype": "Section Break",
+   "label": "Custom Fields"
+  },
+  {
+   "fieldname": "custom_fields_status_html",
+   "fieldtype": "HTML",
+   "label": "Custom Fields Status"
+  },
+  {
+   "fieldname": "create_custom_fields",
+   "fieldtype": "Button",
+   "label": "Create Missing Custom Fields"
+  },
+  {
+   "fieldname": "predeals_tab",
+   "fieldtype": "Tab Break",
+   "label": "Predeals"
+  },
+  {
+   "fieldname": "predeal_event_frequency",
+   "fieldtype": "Select",
+   "label": "Event Frequency",
+   "options": "All\nHourly\nDaily\nWeekly\nMonthly\nYearly\nHourly Long\nDaily Long\nWeekly Long\nMonthly Long\nCron"
+  },
+  {
+   "depends_on": "eval:doc.predeal_event_frequency == \"Cron\"",
+   "fieldname": "predeal_cron_format",
+   "fieldtype": "Data",
+   "label": "Cron Format"
+  },
+  {
+   "fieldname": "column_break_predeal",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "0",
+   "fieldname": "predeal_enabled",
+   "fieldtype": "Check",
+   "label": "Enabled"
+  },
+  {
+   "fieldname": "predeal_filter_section",
+   "fieldtype": "Section Break",
+   "label": "Filters"
+  },
+  {
+   "fieldname": "predeal_from_date",
+   "fieldtype": "Datetime",
+   "label": "From Date"
+  },
+  {
+   "fieldname": "predeal_to_date",
+   "fieldtype": "Datetime",
+   "label": "To Date"
+  },
+  {
+   "description": "Only fetch predeals changed on/after this time (incremental sync)",
+   "fieldname": "predeal_mutation_date",
+   "fieldtype": "Datetime",
+   "label": "Mutation Date"
+  },
+  {
+   "fieldname": "column_break_predeal_filter",
+   "fieldtype": "Column Break"
+  },
+  {
+   "description": "How much to transfer at one time",
+   "fieldname": "predeal_limit",
+   "fieldtype": "Int",
+   "label": "Limit"
+  },
+  {
+   "description": "Pagination offset for the predeals fetch",
+   "fieldname": "predeal_offset",
+   "fieldtype": "Int",
+   "label": "Offset"
+  },
+  {
+   "fieldname": "predeal_scheduler_section",
+   "fieldtype": "Section Break",
+   "label": "Scheduler Run Time"
+  },
+  {
+   "fieldname": "predeal_last_run",
+   "fieldtype": "Datetime",
+   "label": "Last Run",
+   "read_only": 1
+  },
+  {
+   "fieldname": "predeal_column_break_runtime",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "predeal_next_run",
+   "fieldtype": "Datetime",
+   "label": "Next Run",
+   "read_only": 1
+  }
+ ],
+ "grid_page_length": 50,
+ "index_web_pages_for_search": 1,
+ "issingle": 1,
+ "links": [],
+ "modified": "2026-06-18 16:19:34.961006",
+ "modified_by": "Administrator",
+ "module": "Ecommerce Integration",
+ "name": "Biflorica Setting",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "print": 1,
+   "read": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "row_format": "Dynamic",
+ "rows_threshold_for_grid_search": 20,
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": []
+}

@@ -1,0 +1,83 @@
+{
+ "actions": [],
+ "allow_import": 1,
+ "allow_rename": 1,
+ "autoname": "field:item_name",
+ "creation": "2025-11-21 00:09:44.741416",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "item_code",
+  "item_name",
+  "column_break_cgqj",
+  "item_group",
+  "section_break_apjv",
+  "table_ppvq"
+ ],
+ "fields": [
+  {
+   "fieldname": "item_code",
+   "fieldtype": "Link",
+   "label": "Item Code",
+   "options": "Item",
+   "unique": 1
+  },
+  {
+   "fetch_from": "item_code.item_name",
+   "fetch_if_empty": 1,
+   "fieldname": "item_name",
+   "fieldtype": "Data",
+   "label": "Item Name",
+   "unique": 1
+  },
+  {
+   "fieldname": "column_break_cgqj",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "section_break_apjv",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "table_ppvq",
+   "fieldtype": "Table",
+   "options": "Stem Length Price"
+  },
+  {
+   "fetch_from": "item_code.item_group",
+   "fetch_if_empty": 1,
+   "fieldname": "item_group",
+   "fieldtype": "Data",
+   "label": "Item Group"
+  }
+ ],
+ "grid_page_length": 50,
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2026-05-02 18:34:54.142289",
+ "modified_by": "Administrator",
+ "module": "Ecommerce Integration",
+ "name": "Floriday Items",
+ "naming_rule": "By fieldname",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "row_format": "Dynamic",
+ "rows_threshold_for_grid_search": 20,
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": [],
+ "title_field": "item_name"
+}

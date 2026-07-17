@@ -1,0 +1,133 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "creation": "2026-05-04 21:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 0,
+ "engine": "InnoDB",
+ "field_order": [
+  "offer_id",
+  "type",
+  "variety",
+  "color",
+  "size",
+  "quantity",
+  "packing",
+  "price_per_stem",
+  "price",
+  "box_type",
+  "platform",
+  "farm",
+  "date_start",
+  "date_end"
+ ],
+ "fields": [
+  {
+   "fieldname": "offer_id",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Offer ID",
+   "read_only": 1
+  },
+  {
+   "fieldname": "type",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Type",
+   "read_only": 1
+  },
+  {
+   "fieldname": "variety",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Variety",
+   "read_only": 1
+  },
+  {
+   "fieldname": "color",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Color",
+   "read_only": 1
+  },
+  {
+   "fieldname": "size",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Size",
+   "read_only": 1
+  },
+  {
+   "fieldname": "quantity",
+   "fieldtype": "Float",
+   "in_list_view": 1,
+   "label": "Quantity",
+   "read_only": 1
+  },
+  {
+   "fieldname": "packing",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Packing",
+   "read_only": 1
+  },
+  {
+   "fieldname": "price_per_stem",
+   "fieldtype": "Currency",
+   "in_list_view": 1,
+   "label": "Price / Stem",
+   "read_only": 1
+  },
+  {
+   "fieldname": "price",
+   "fieldtype": "Currency",
+   "in_list_view": 1,
+   "label": "Pack Price",
+   "read_only": 1
+  },
+  {
+   "fieldname": "box_type",
+   "fieldtype": "Data",
+   "label": "Box Type",
+   "read_only": 1
+  },
+  {
+   "fieldname": "platform",
+   "fieldtype": "Data",
+   "label": "Platform",
+   "read_only": 1
+  },
+  {
+   "fieldname": "farm",
+   "fieldtype": "Data",
+   "label": "Farm",
+   "read_only": 1
+  },
+  {
+   "fieldname": "date_start",
+   "fieldtype": "Datetime",
+   "label": "Date Start",
+   "read_only": 1
+  },
+  {
+   "fieldname": "date_end",
+   "fieldtype": "Datetime",
+   "label": "Date End",
+   "read_only": 1
+  }
+ ],
+ "grid_page_length": 50,
+ "index_web_pages_for_search": 1,
+ "istable": 1,
+ "links": [],
+ "modified": "2026-05-04 21:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Ecommerce Integration",
+ "name": "Biflorica Offer View",
+ "owner": "Administrator",
+ "permissions": [],
+ "row_format": "Dynamic",
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": []
+}

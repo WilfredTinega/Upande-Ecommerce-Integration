@@ -4,7 +4,7 @@ authors = [
     { name = "Upande LTD", email = "wilfred@upande.com"}
 ]
 description = "Upande Ecommerce Integrations"
-requires-python = ">=3.14"
+requires-python = ">=3.10"
 readme = "README.md"
 dynamic = ["version"]
 dependencies = [
@@ -19,13 +19,19 @@ build-backend = "flit_core.buildapi"
 [tool.bench.dev-dependencies]
 # package_name = "~=1.1.0"
 
+# Frappe Cloud requires a bounded, comma-separated (no space) semver range,
+# declared the same way ERPNext declares it. Without it FC rejects the app
+# tag with "invalid version format". v15+ compatible.
+[tool.bench.frappe-dependencies]
+frappe = ">=15.0.0,<20.0.0"
+
 # These apt dependencies will be installed from Ubuntu repositories when you host your app on Frappe Cloud
 [deploy.dependencies.apt]
 packages = []
 
 [tool.ruff]
 line-length = 110
-target-version = "py314"
+target-version = "py310"
 
 [tool.ruff.lint]
 select = [

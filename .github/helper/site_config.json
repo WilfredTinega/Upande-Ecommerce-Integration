@@ -1,0 +1,13 @@
+{
+    "db_host": "127.0.0.1",
+    "db_port": 3306,
+    "db_name": "test_frappe",
+    "db_password": "test_frappe",
+    "use_mysqlclient": 1,
+    "admin_password": "admin",
+    "root_login": "root",
+    "root_password": "root",
+    "host_name": "http://test_site:8000",
+    "install_apps": ["payments", "erpnext", "upande_webshop"],
+    "throttle_user_limit": 100
+}

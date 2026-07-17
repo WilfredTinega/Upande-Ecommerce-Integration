@@ -5,101 +5,87 @@ on:
     branches:
       - main
   pull_request:
+    paths-ignore:
+      - "**.md"
+      - "**.css"
+      - "**.svg"
+      - "**.png"
+      - "**.ico"
+
+permissions:
+  contents: read
 
 concurrency:
-  group: main-ecommerce_integration-${{ github.event.number }}
+  group: ci-ecommerce_integration-${{ github.event.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
   tests:
+    name: Install + Migrate (Frappe v15 · ERPNext · Payments · Upande Webshop)
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-    name: Server
+    timeout-minutes: 60
 
     services:
-      redis-cache:
-        image: redis:alpine
-        ports:
-          - 13000:6379
-      redis-queue:
-        image: redis:alpine
-        ports:
-          - 11000:6379
       mariadb:
         image: mariadb:11.8
         env:
-          MYSQL_ROOT_PASSWORD: root
+          MARIADB_ROOT_PASSWORD: 'root'
         ports:
           - 3306:3306
         options: --health-cmd="mariadb-admin ping" --health-interval=5s --health-timeout=2s --health-retries=3
 
     steps:
       - name: Clone
-        uses: actions/checkout@v6
-
-      - name: Find tests
-        run: |
-          echo "Finding tests"
-          grep -rn "def test" > /dev/null
+        uses: actions/checkout@v4
 
       - name: Setup Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@v5
         with:
-          python-version: '3.14'
+          python-version: "3.11"
+
+      - name: Check for valid Python & Merge Conflicts
+        run: |
+          python -m compileall -q "${GITHUB_WORKSPACE}/ecommerce_integration"
+          if grep -lr --exclude-dir=node_modules "^<<<<<<< " "${GITHUB_WORKSPACE}/ecommerce_integration"; then
+            echo "Found merge conflict markers"; exit 1
+          fi
 
       - name: Setup Node
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v4
         with:
           node-version: 24
           check-latest: true
+
+      - name: Add to Hosts
+        run: echo "127.0.0.1 test_site" | sudo tee -a /etc/hosts
 
       - name: Cache pip
         uses: actions/cache@v4
         with:
           path: ~/.cache/pip
-          key: ${{ runner.os }}-pip-${{ hashFiles('**/*requirements.txt', '**/pyproject.toml', '**/setup.py', '**/setup.cfg') }}
-          restore-keys: |
-            ${{ runner.os }}-pip-
-            ${{ runner.os }}-
+          key: ${{ runner.os }}-pip-${{ hashFiles('**/pyproject.toml') }}
+          restore-keys: ${{ runner.os }}-pip-
 
-      - name: Get yarn cache directory path
-        id: yarn-cache-dir-path
-        run: 'echo "dir=$(yarn cache dir)" >> $GITHUB_OUTPUT'
+      - name: Get yarn cache directory
+        id: yarn-cache-dir
+        run: echo "dir=$(yarn cache dir)" >> $GITHUB_OUTPUT
 
-      - uses: actions/cache@v4
-        id: yarn-cache
+      - name: Cache yarn
+        uses: actions/cache@v4
         with:
-          path: ${{ steps.yarn-cache-dir-path.outputs.dir }}
+          path: ${{ steps.yarn-cache-dir.outputs.dir }}
           key: ${{ runner.os }}-yarn-${{ hashFiles('**/yarn.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-yarn-
+          restore-keys: ${{ runner.os }}-yarn-
 
-      - name: Install MariaDB Client
-        run: |
-          sudo apt update
-          sudo apt-get install mariadb-client
-
-      - name: Setup
-        run: |
-          pip install frappe-bench
-          bench init --skip-redis-config-generation --skip-assets --python "$(which python)" ~/frappe-bench
-
-      - name: Install
-        working-directory: /home/runner/frappe-bench
-        run: |
-          bench get-app ecommerce_integration $GITHUB_WORKSPACE
-          bench setup requirements --dev
-          bench new-site --db-root-password root --admin-password admin test_site
-          bench --site test_site install-app ecommerce_integration
-          bench build
+      - name: Install & Migrate (deploy simulation)
+        run: bash ${GITHUB_WORKSPACE}/.github/helper/install.sh
         env:
-          CI: 'Yes'
+          FRAPPE_BRANCH: version-15
+          ERPNEXT_BRANCH: version-15
+          PAYMENTS_BRANCH: version-15
+          WEBSHOP_REPO: https://github.com/WilfredTinega/Upande-Webshop.git
+          WEBSHOP_BRANCH: main
 
-      - name: Run Tests
+      - name: Run app tests
         working-directory: /home/runner/frappe-bench
-        run: |
-          bench --site test_site set-config allow_tests true
-          bench --site test_site run-tests --app ecommerce_integration
-        env:
-          TYPE: server
+        run: bench --site test_site run-tests --app ecommerce_integration

@@ -1,0 +1,86 @@
+{
+ "app": "ecommerce_integration",
+ "charts": [],
+ "content": "[{\"id\":\"eiIntegrations1\",\"type\":\"card\",\"data\":{\"card_name\":\"Integrations\",\"col\":4}}]",
+ "creation": "2025-11-20 20:43:34.240751",
+ "custom_blocks": [],
+ "docstatus": 0,
+ "doctype": "Workspace",
+ "for_user": "",
+ "hide_custom": 0,
+ "icon": "sell",
+ "idx": 0,
+ "indicator_color": "green",
+ "is_hidden": 0,
+ "label": "Ecommerce",
+ "link_type": "DocType",
+ "links": [
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Website Settings",
+   "link_count": 0,
+   "link_to": "Website Settings",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Integrations",
+   "link_count": 3,
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Card Break"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Floriday Settings",
+   "link_count": 0,
+   "link_to": "Floriday Settings",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Biflorica Settings",
+   "link_count": 0,
+   "link_to": "Biflorica Setting",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Floriday Item Prices",
+   "link_count": 0,
+   "link_to": "Floriday Items",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  }
+ ],
+ "modified": "2026-07-17 13:36:21.993998",
+ "modified_by": "Administrator",
+ "module": "Ecommerce Integration",
+ "name": "Ecommerce",
+ "number_cards": [],
+ "owner": "Administrator",
+ "parent_page": "",
+ "public": 1,
+ "quick_lists": [],
+ "roles": [
+  {
+   "role": "Sales Manager"
+  }
+ ],
+ "sequence_id": 46.0,
+ "shortcuts": [],
+ "title": "Ecommerce",
+ "type": "Workspace"
+}

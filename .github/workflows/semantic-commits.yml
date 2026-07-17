@@ -1,0 +1,38 @@
+name: Semantic Commits
+
+# Lints the PULL REQUEST TITLE as a Conventional Commit (feat:, fix:, chore:, ...).
+# semantic-release (see .releaserc.json) computes the next version from commit
+# messages on `main`; if you squash-merge with the PR title as the commit
+# subject, that single conventional title is what it reads — so individual
+# work-in-progress commits ("update", "wip") no longer need to be conventional,
+# only the PR title does.
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: commitcheck-ecommerce-integration-${{ github.event.number }}
+  cancel-in-progress: true
+
+jobs:
+  commitlint:
+    name: Check PR Title
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          check-latest: true
+
+      - name: Check PR title
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          npm install @commitlint/cli @commitlint/config-conventional
+          echo "$PR_TITLE" | npx commitlint --verbose
