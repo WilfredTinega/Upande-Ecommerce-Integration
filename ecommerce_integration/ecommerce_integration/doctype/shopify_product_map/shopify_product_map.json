@@ -1,0 +1,131 @@
+{
+ "actions": [],
+ "creation": "2026-07-30 21:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "product_title",
+  "shopify_variant_id",
+  "shopify_product_id",
+  "enabled",
+  "column_break_pm",
+  "line_class",
+  "box_item",
+  "stems_per_box",
+  "qty_is_stems",
+  "notes_section",
+  "notes"
+ ],
+ "fields": [
+  {
+   "fieldname": "product_title",
+   "fieldtype": "Data",
+   "label": "Product Title",
+   "reqd": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "shopify_variant_id",
+   "fieldtype": "Data",
+   "label": "Shopify Variant ID",
+   "reqd": 1,
+   "unique": 1,
+   "in_list_view": 1,
+   "description": "Matching key. Shopify SKUs on this store are all null, so lines are matched on variant id."
+  },
+  {
+   "fieldname": "shopify_product_id",
+   "fieldtype": "Data",
+   "label": "Shopify Product ID"
+  },
+  {
+   "fieldname": "enabled",
+   "fieldtype": "Check",
+   "label": "Enabled",
+   "default": "1"
+  },
+  {
+   "fieldname": "column_break_pm",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "line_class",
+   "fieldtype": "Select",
+   "label": "Line Class",
+   "options": "Box\nFee\nPackaging\nOther",
+   "default": "Box",
+   "reqd": 1,
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "description": "Only Box lines are allocated. Fee and Packaging lines are carried on the order and ignored by allocation."
+  },
+  {
+   "fieldname": "box_item",
+   "fieldtype": "Link",
+   "label": "Box Item",
+   "options": "Item",
+   "description": "Optional ERPNext item representing this box product."
+  },
+  {
+   "fieldname": "stems_per_box",
+   "fieldtype": "Int",
+   "label": "Stems per Box",
+   "in_list_view": 1,
+   "description": "Used to pre-fill how many stems an allocation needs. Leave 0 when the ordered qty is itself the stem count."
+  },
+  {
+   "fieldname": "qty_is_stems",
+   "fieldtype": "Check",
+   "label": "Ordered Qty is Stems",
+   "default": "0",
+   "description": "Set for build-your-own products, where the ordered quantity is a stem count rather than a number of boxes."
+  },
+  {
+   "fieldname": "notes_section",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "notes",
+   "fieldtype": "Small Text",
+   "label": "Notes"
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2026-07-30 21:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Ecommerce Integration",
+ "name": "Shopify Product Map",
+ "owner": "Administrator",
+ "row_format": "Dynamic",
+ "sort_field": "product_title",
+ "sort_order": "ASC",
+ "states": [],
+ "autoname": "format:SHOP-MAP-{shopify_variant_id}",
+ "naming_rule": "Expression",
+ "title_field": "product_title",
+ "track_changes": 1,
+ "permissions": [
+  {
+   "role": "System Manager",
+   "read": 1,
+   "write": 1,
+   "create": 1,
+   "delete": 1,
+   "report": 1,
+   "export": 1,
+   "share": 1,
+   "print": 1,
+   "email": 1
+  },
+  {
+   "role": "Sales Manager",
+   "read": 1,
+   "write": 1,
+   "create": 1,
+   "report": 1,
+   "export": 1,
+   "print": 1
+  }
+ ]
+}

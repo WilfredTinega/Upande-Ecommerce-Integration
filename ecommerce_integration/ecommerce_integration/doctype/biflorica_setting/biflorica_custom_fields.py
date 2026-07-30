@@ -8,7 +8,7 @@ from frappe.custom.doctype.custom_field.custom_field import create_custom_field
 # Custom fields the Biflorica deal/predeal -> Sales Order flow relies on, keyed by
 # "<DocType>::<fieldname>". Each `df` is passed to create_custom_field(dt, df).
 #
-# Fields marked optional are shared with the Karen Roses / Floriday setup; on
+# Fields marked optional are shared with the Floriday setup; on
 # sites that already own them the creator skips them, and the Biflorica code
 # guards every field with has_field, so a missing optional field never breaks
 # the flow — it just leaves that column blank.
@@ -36,7 +36,7 @@ BIFLORICA_CUSTOM_FIELDS = [
             "description": "Biflorica buyer code used as the box label.",
         },
     },
-    # --- Shared with Karen Roses / Floriday (optional; created if absent) ---
+    # --- Shared with Floriday (optional; created if absent) ---
     {
         "dt": "Sales Order",
         "df": {

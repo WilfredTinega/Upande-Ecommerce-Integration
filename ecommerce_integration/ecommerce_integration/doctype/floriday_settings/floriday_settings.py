@@ -296,6 +296,13 @@ def _get_floriday_item_index():
 	Only rows with a trade_item_id set are included — those are the ones actually
 	offered to Floriday and the ones the Stock tab cares about.
 	"""
+	from ecommerce_integration.ecommerce_integration.utils import has_doctypes
+
+	# `Stem Length Price` belongs to upande_webshop. Without it there are no
+	# trade-item mappings to index, so the Stock tab shows nothing rather than 500ing.
+	if not has_doctypes("Floriday Items", "Stem Length Price"):
+		return {}, {}
+
 	rows = frappe.db.sql(
 		"""
 		SELECT fi.item_code, fi.item_name, slp.stem_length, slp.trade_item_id
@@ -315,7 +322,7 @@ def _get_floriday_item_index():
 	return by_code_length, by_code
 
 
-# Variant-attribute name varies between sites: kaitet uses "Length", mona uses
+# Variant-attribute name varies between sites: some use "Length", others use
 # "Stem Length". We try both and pick whichever a given template uses.
 _STEM_LENGTH_ATTR_CANDIDATES = ("Stem Length", "Length")
 
@@ -355,9 +362,9 @@ def _resolve_variant_item(template_code, stem_length):
 def _site_has_sle_stem_length():
 	"""Detect whether `tabStock Ledger Entry` has the `custom_stem_length` column.
 
-	Cached per request. On kaitet this is True (stem length is captured in a
-	custom field on SLE). On mona this is False — stem length is encoded in
-	variant item codes instead.
+	Cached per request. True on custom-field-model sites (stem length is captured
+	in a custom field on SLE). False on variant-model sites — there stem length is
+	encoded in variant item codes instead.
 	"""
 	if frappe.local.flags.get("_floriday_sle_stem_length_present") is not None:
 		return frappe.local.flags["_floriday_sle_stem_length_present"]
@@ -384,8 +391,8 @@ def _site_has_se_detail_stem_length():
 def _variant_to_template_index():
 	"""Map every variant item_code → (template_code, stem_length_attr_value).
 
-	Used on variant-driven sites (e.g. mona) so we can attribute warehouse stock
-	to a template + stem length. Returns {} on sites that don't use variants.
+	Used on variant-driven sites so we can attribute warehouse stock to a
+	template + stem length. Returns {} on sites that don't use variants.
 	"""
 	rows = frappe.db.sql(
 		"""
@@ -424,7 +431,7 @@ def _floriday_flagged_qty_map(item_codes, warehouses):
 	warehouse.
 
 	`Shelf Item.variety` is the plain item code and `Shelf Item.stem_length` is
-	the Stem Length name (e.g. "52cm"). On kaitet (custom-field model) the SLE
+	the Stem Length name (e.g. "52cm"). On the custom-field model the SLE
 	rows at the call site are keyed on the same plain item code, so the keys
 	align. Keys use _normalize_stem_length on both sides so "52cm"/"52"/"52 cm"
 	match the call site's normalized stem length.
@@ -464,9 +471,9 @@ def _aggregate_floriday_stock(warehouses, apply_stock_source=False):
 	"""SLE-aggregated per-(warehouse, item, stem_length) balances joined to
 	Floriday Items. Handles two data models transparently:
 
-	- Custom-field model (kaitet): stem length lives in
+	- Custom-field model: stem length lives in
 	  `tabStock Ledger Entry.custom_stem_length`; aggregation groups by it.
-	- Variant model (mona): each stem length is its own variant item_code (e.g.
+	- Variant model: each stem length is its own variant item_code (e.g.
 	  Alicia-50cm). Aggregation groups by item_code only; stem length is read
 	  from the variant attribute and the template's Floriday mapping.
 
@@ -846,19 +853,23 @@ def get_item_floriday_meta(item_code):
 		length_value = length_attr or ""
 
 	# Pull Floriday Items rows for the template
-	rows = frappe.db.sql(
-		"""
-		SELECT slp.stem_length, slp.trade_item_id
-		FROM `tabFloriday Items` fi
-		INNER JOIN `tabStem Length Price` slp ON slp.parent = fi.name
-		WHERE slp.parenttype = 'Floriday Items'
-		AND fi.item_code = %s
-		AND slp.trade_item_id IS NOT NULL AND slp.trade_item_id != ''
-		ORDER BY slp.stem_length
-		""",
-		(template,),
-		as_dict=True,
-	)
+	from ecommerce_integration.ecommerce_integration.utils import has_doctypes
+
+	rows = []
+	if has_doctypes("Floriday Items", "Stem Length Price"):
+		rows = frappe.db.sql(
+			"""
+			SELECT slp.stem_length, slp.trade_item_id
+			FROM `tabFloriday Items` fi
+			INNER JOIN `tabStem Length Price` slp ON slp.parent = fi.name
+			WHERE slp.parenttype = 'Floriday Items'
+			AND fi.item_code = %s
+			AND slp.trade_item_id IS NOT NULL AND slp.trade_item_id != ''
+			ORDER BY slp.stem_length
+			""",
+			(template,),
+			as_dict=True,
+		)
 	out["stem_length_options"] = [
 		{"stem_length": r.stem_length, "trade_item_id": r.trade_item_id}
 		for r in rows

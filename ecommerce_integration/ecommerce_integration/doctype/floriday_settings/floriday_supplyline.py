@@ -325,7 +325,13 @@ def get_item_price_from_erpnext(trade_item_id):
     Prices for pricing; only Floriday Items rows carry a trade_item_id, so
     filtering on trade_item_id is sufficient to scope this query.
     """
+    from ecommerce_integration.ecommerce_integration.utils import has_doctypes
+
     if not trade_item_id:
+        return None
+    if not has_doctypes("Stem Length Price"):
+        # upande_webshop absent: no per-stem rates to read, so fall back to the
+        # caller's default rather than raising.
         return None
     try:
         row = frappe.db.sql(

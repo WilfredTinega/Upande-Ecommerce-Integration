@@ -4,6 +4,7 @@ app_publisher = "Upande LTD"
 app_description = "Upande Ecommerce Integrations"
 app_email = "wilfred@upande.com"
 app_license = "mit"
+app_logo_url = "/assets/ecommerce_integration/images/upande_logo.ico"
 
 # Send non-GET requests for this app's endpoints as native `application/json`
 # bodies instead of form-encoded, per-key JSON-stringified values.
@@ -121,6 +122,7 @@ after_migrate = [
     "ecommerce_integration.ecommerce_integration.doctype.floriday_settings.floriday_settings.resync_scheduled_jobs",
     "ecommerce_integration.ecommerce_integration.doctype.biflorica_setting.biflorica_setting.resync_scheduled_jobs",
     "ecommerce_integration.ecommerce_integration.doctype.biflorica_setting.biflorica_custom_fields.ensure_biflorica_custom_fields",
+    "ecommerce_integration.ecommerce_integration.doctype.shopify_settings.shopify_settings.resync_scheduled_jobs",
 ]
 
 # Uninstallation

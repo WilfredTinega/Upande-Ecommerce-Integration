@@ -1,0 +1,424 @@
+{
+ "actions": [],
+ "autoname": "format:SHOP-ORD-{shopify_order_id}",
+ "creation": "2026-07-30 08:30:00",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "order_section",
+  "shopify_order_id",
+  "order_name",
+  "order_date",
+  "column_break_order",
+  "shopify_subscription",
+  "customer",
+  "customer_email",
+  "pipeline_section",
+  "allocation_status",
+  "allocation",
+  "allocations_raised",
+  "column_break_pipeline",
+  "requested_delivery_date",
+  "financial_status",
+  "fulfillment_status",
+  "items_section",
+  "items",
+  "totals_section",
+  "total_qty",
+  "column_break_totals",
+  "total_amount",
+  "currency",
+  "delivery_section",
+  "shipping_address",
+  "column_break_delivery",
+  "shipping_city",
+  "shipping_country",
+  "sync_section",
+  "last_synced_on",
+  "shopify_created_at",
+  "column_break_sync",
+  "shopify_updated_at",
+  "payload_section",
+  "shopify_payload",
+  "terms_section",
+  "duration_boxes",
+  "frequency",
+  "first_delivery_date",
+  "column_break_terms",
+  "start_date",
+  "end_date",
+  "needs_allocation",
+  "gift_section",
+  "is_gift",
+  "recipient_name",
+  "recipient_phone",
+  "column_break_gift2",
+  "recipient_email",
+  "gift_note",
+  "special_requests",
+  "attributes_section",
+  "attributes"
+ ],
+ "fields": [
+  {
+   "fieldname": "order_section",
+   "fieldtype": "Section Break",
+   "label": "Shopify Order"
+  },
+  {
+   "fieldname": "shopify_order_id",
+   "fieldtype": "Data",
+   "in_standard_filter": 1,
+   "label": "Shopify Order ID",
+   "read_only": 1,
+   "reqd": 1,
+   "unique": 1
+  },
+  {
+   "fieldname": "order_name",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Order No",
+   "read_only": 1
+  },
+  {
+   "fieldname": "order_date",
+   "fieldtype": "Datetime",
+   "in_list_view": 1,
+   "label": "Order Date",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_order",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "shopify_subscription",
+   "fieldtype": "Link",
+   "in_standard_filter": 1,
+   "label": "Shopify Subscription",
+   "options": "Shopify Subscription",
+   "read_only": 1
+  },
+  {
+   "fieldname": "customer",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Customer",
+   "options": "Customer"
+  },
+  {
+   "fieldname": "customer_email",
+   "fieldtype": "Data",
+   "label": "Subscriber Email",
+   "read_only": 1
+  },
+  {
+   "fieldname": "pipeline_section",
+   "fieldtype": "Section Break",
+   "label": "Fulfilment"
+  },
+  {
+   "default": "Not Allocated",
+   "fieldname": "allocation_status",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Allocation Status",
+   "options": "Not Allocated\nAllocated\nPacked\nShipped\nCancelled"
+  },
+  {
+   "fieldname": "allocation",
+   "fieldtype": "Link",
+   "label": "Latest Allocation",
+   "options": "Shopify Allocation",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_pipeline",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "requested_delivery_date",
+   "fieldtype": "Date",
+   "label": "Requested Delivery Date"
+  },
+  {
+   "fieldname": "financial_status",
+   "fieldtype": "Data",
+   "label": "Financial Status",
+   "read_only": 1
+  },
+  {
+   "fieldname": "fulfillment_status",
+   "fieldtype": "Data",
+   "label": "Fulfilment Status",
+   "read_only": 1
+  },
+  {
+   "fieldname": "items_section",
+   "fieldtype": "Section Break",
+   "label": "Ordered"
+  },
+  {
+   "fieldname": "items",
+   "fieldtype": "Table",
+   "label": "Items",
+   "options": "Shopify Order Item"
+  },
+  {
+   "fieldname": "totals_section",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "total_qty",
+   "fieldtype": "Float",
+   "label": "Total Qty",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_totals",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "total_amount",
+   "fieldtype": "Currency",
+   "label": "Total Amount",
+   "options": "currency",
+   "read_only": 1
+  },
+  {
+   "fieldname": "currency",
+   "fieldtype": "Link",
+   "label": "Currency",
+   "options": "Currency",
+   "read_only": 1
+  },
+  {
+   "fieldname": "delivery_section",
+   "fieldtype": "Section Break",
+   "label": "Delivery"
+  },
+  {
+   "fieldname": "shipping_address",
+   "fieldtype": "Small Text",
+   "label": "Shipping Address",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_delivery",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "shipping_city",
+   "fieldtype": "Data",
+   "label": "City",
+   "read_only": 1
+  },
+  {
+   "fieldname": "shipping_country",
+   "fieldtype": "Data",
+   "label": "Country",
+   "read_only": 1
+  },
+  {
+   "collapsible": 1,
+   "fieldname": "sync_section",
+   "fieldtype": "Section Break",
+   "label": "Sync"
+  },
+  {
+   "fieldname": "last_synced_on",
+   "fieldtype": "Datetime",
+   "label": "Last Synced On",
+   "read_only": 1
+  },
+  {
+   "fieldname": "shopify_created_at",
+   "fieldtype": "Datetime",
+   "label": "Created on Shopify",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_sync",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "shopify_updated_at",
+   "fieldtype": "Datetime",
+   "label": "Updated on Shopify",
+   "read_only": 1
+  },
+  {
+   "collapsible": 1,
+   "fieldname": "payload_section",
+   "fieldtype": "Section Break",
+   "label": "Raw Payload"
+  },
+  {
+   "fieldname": "shopify_payload",
+   "fieldtype": "Code",
+   "label": "Shopify Payload",
+   "options": "JSON",
+   "read_only": 1
+  },
+  {
+   "fieldname": "terms_section",
+   "fieldtype": "Section Break",
+   "label": "Subscription Terms"
+  },
+  {
+   "fieldname": "duration_boxes",
+   "fieldtype": "Int",
+   "label": "Boxes Purchased"
+  },
+  {
+   "default": "Monthly",
+   "fieldname": "frequency",
+   "fieldtype": "Select",
+   "label": "Frequency",
+   "options": "\nWeekly\nFortnightly\nMonthly"
+  },
+  {
+   "fieldname": "first_delivery_date",
+   "fieldtype": "Date",
+   "label": "First Delivery Date"
+  },
+  {
+   "fieldname": "column_break_terms",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "start_date",
+   "fieldtype": "Date",
+   "label": "Start Date"
+  },
+  {
+   "fieldname": "end_date",
+   "fieldtype": "Date",
+   "label": "End Date",
+   "read_only": 1
+  },
+  {
+   "default": "0",
+   "fieldname": "needs_allocation",
+   "fieldtype": "Check",
+   "label": "Needs Allocation",
+   "read_only": 1
+  },
+  {
+   "fieldname": "gift_section",
+   "fieldtype": "Section Break",
+   "label": "Gift & Requests"
+  },
+  {
+   "default": "0",
+   "fieldname": "is_gift",
+   "fieldtype": "Check",
+   "label": "Is a Gift"
+  },
+  {
+   "fieldname": "recipient_name",
+   "fieldtype": "Data",
+   "label": "Recipient Name"
+  },
+  {
+   "fieldname": "recipient_phone",
+   "fieldtype": "Data",
+   "label": "Recipient Phone"
+  },
+  {
+   "fieldname": "column_break_gift2",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "recipient_email",
+   "fieldtype": "Data",
+   "label": "Recipient Email"
+  },
+  {
+   "fieldname": "gift_note",
+   "fieldtype": "Small Text",
+   "label": "Handwritten Note"
+  },
+  {
+   "fieldname": "special_requests",
+   "fieldtype": "Small Text",
+   "label": "Special Requests"
+  },
+  {
+   "collapsible": 1,
+   "fieldname": "attributes_section",
+   "fieldtype": "Section Break",
+   "label": "Shopify Attributes"
+  },
+  {
+   "fieldname": "attributes",
+   "fieldtype": "Table",
+   "label": "Attributes",
+   "options": "Shopify Order Attribute",
+   "read_only": 1
+  },
+  {
+   "default": "0",
+   "fieldname": "allocations_raised",
+   "fieldtype": "Int",
+   "label": "Allocations Raised",
+   "read_only": 1
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "links": [
+  {
+   "link_doctype": "Shopify Allocation",
+   "link_fieldname": "shopify_order"
+  }
+ ],
+ "modified": "2026-07-30 18:57:12.805489",
+ "modified_by": "Administrator",
+ "module": "Ecommerce Integration",
+ "name": "Shopify Order",
+ "naming_rule": "Expression (old style)",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Sales Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Sales User",
+   "write": 1
+  }
+ ],
+ "row_format": "Dynamic",
+ "sort_field": "order_date",
+ "sort_order": "DESC",
+ "states": [],
+ "title_field": "order_name",
+ "track_changes": 1
+}

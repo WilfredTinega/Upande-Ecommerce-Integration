@@ -766,9 +766,9 @@ Delivery Point: {delivery_point_name or 'Not resolved'}"""
 
             farm, business_unit, _company_from_stock_entry = get_farm_business_unit_company_from_stock_entry(trade_item_id, item_code)
 
-            # The Sales Order company comes from Floriday Settings.company (set to
-            # Karen Roses). We do NOT use the stock-entry resolver's company: it can
-            # return Kaitet Group (group-level transfers), which then fails the
+            # The Sales Order company comes from Floriday Settings.company. We do
+            # NOT use the stock-entry resolver's company: it can return a
+            # parent/group company (group-level transfers), which then fails the
             # "warehouse does not belong to company" check. If the setting is unset,
             # throw a clear error rather than guessing a company.
             sales_order.company = settings.get("company") if settings else None
@@ -861,7 +861,7 @@ Delivery Point: {delivery_point_name or 'Not resolved'}"""
 
     if target_dt == "Sales Order":
         sales_order.submit()
-        # The kaitet Sales Order Item override forces amount = rate × stock_qty
+        # The host app's Sales Order Item override forces amount = rate × stock_qty
         # during validate/submit. After submit we have docstatus=1 and a stable
         # PK; rewrite the per-line amounts and order totals directly in the DB to
         # the correct rate × qty values. That override doesn't touch Quotation

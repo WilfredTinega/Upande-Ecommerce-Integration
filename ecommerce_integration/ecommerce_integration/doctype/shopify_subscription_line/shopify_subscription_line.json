@@ -1,0 +1,101 @@
+{
+ "actions": [],
+ "creation": "2026-07-30 08:30:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "product_title",
+  "variant_title",
+  "sku",
+  "box_item",
+  "qty",
+  "rate",
+  "shopify_line_id",
+  "currency",
+  "variant_id"
+ ],
+ "fields": [
+  {
+   "columns": 3,
+   "fieldname": "product_title",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Product",
+   "read_only": 1
+  },
+  {
+   "columns": 2,
+   "fieldname": "variant_title",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Variant",
+   "read_only": 1
+  },
+  {
+   "fieldname": "sku",
+   "fieldtype": "Data",
+   "label": "SKU",
+   "read_only": 1
+  },
+  {
+   "columns": 2,
+   "description": "ERPNext item representing this box product, matched on SKU when one exists.",
+   "fieldname": "box_item",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Box Item",
+   "options": "Item"
+  },
+  {
+   "columns": 1,
+   "fieldname": "qty",
+   "fieldtype": "Float",
+   "in_list_view": 1,
+   "label": "Qty",
+   "read_only": 1
+  },
+  {
+   "columns": 2,
+   "fieldname": "rate",
+   "fieldtype": "Currency",
+   "in_list_view": 1,
+   "label": "Rate",
+   "options": "currency",
+   "read_only": 1
+  },
+  {
+   "fieldname": "shopify_line_id",
+   "fieldtype": "Data",
+   "label": "Shopify Line ID",
+   "read_only": 1
+  },
+  {
+   "fieldname": "currency",
+   "fieldtype": "Link",
+   "hidden": 1,
+   "label": "Currency",
+   "options": "Currency",
+   "read_only": 1
+  },
+  {
+   "fieldname": "variant_id",
+   "fieldtype": "Data",
+   "label": "Shopify Variant ID",
+   "read_only": 1
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "istable": 1,
+ "links": [],
+ "modified": "2026-07-30 08:30:00.000000",
+ "modified_by": "Administrator",
+ "module": "Ecommerce Integration",
+ "name": "Shopify Subscription Line",
+ "owner": "Administrator",
+ "permissions": [],
+ "row_format": "Dynamic",
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": []
+}

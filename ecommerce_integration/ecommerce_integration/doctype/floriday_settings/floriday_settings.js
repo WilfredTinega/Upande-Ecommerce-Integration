@@ -620,7 +620,7 @@ const CHANGELOG = [
 		title: "Floriday Sales Order import is fully config-driven",
 		points: [
 			"Every imported Floriday order books under the <b>Customer</b> set on the Floriday Setting tab (no more per-organization or <i>Floriday-Default-Customer</i> creation). Fixes the <i>“[Customer …]: default_currency”</i> error that blocked all imports.",
-			"The Sales Order <b>Company</b> now comes from the configured Company field (e.g. Karen Roses) — never the stock-entry resolver, which could return Kaitet Group and fail the warehouse-company check.",
+			"The Sales Order <b>Company</b> now comes from the configured Company field — never the stock-entry resolver, which could return a parent/group company and fail the warehouse-company check.",
 			"Mandatory header fields are filled from settings: <b>Business Unit</b>, <b>Sales Order Type</b>, and a <b>Default Farm</b> fallback when the source transfer doesn't resolve one. Nothing is hardcoded — set these on the Floriday Setting tab.",
 		],
 	},

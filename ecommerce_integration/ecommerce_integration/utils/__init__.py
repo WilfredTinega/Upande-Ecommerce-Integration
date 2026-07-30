@@ -15,6 +15,18 @@ from frappe.utils import cint
 USD_PRICE_LIST = "USD Price List"
 
 
+def has_doctypes(*doctypes):
+	"""True only when every named DocType exists on this site.
+
+	Guards raw SQL against doctypes this app references but does not own — chiefly
+	`Stem Length Price` and `Webshop Item Prices`, which belong to upande_webshop.
+	Without this, a site running only part of the suite gets a bare
+	`MySQLdb.ProgrammingError: Table '...' doesn't exist` from the Floriday and
+	Biflorica screens instead of an empty result.
+	"""
+	return all(frappe.db.exists("DocType", doctype) for doctype in doctypes)
+
+
 def create_orders_as_quotation():
 	"""True when the site is configured to keep orders as draft Quotations
 	instead of creating Sales Orders directly.

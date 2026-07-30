@@ -957,7 +957,7 @@ def _create_sales_order_from_deal(settings, deal, submit=True, kind="deal", stem
 
 	# Sell in BUNCHES: qty = total_stems / bunch size, UOM = the item's sales
 	# (bunch) UOM. stock_qty stays = total_stems (bunches * conversion_factor),
-	# and the kaitet amount override is rate(per stem) * stock_qty, so we keep
+	# and the host app's amount override is rate(per stem) * stock_qty, so we keep
 	# the per-stem rate to land the correct deal total.
 	stock_uom = frappe.db.get_value("Item", item_code, "stock_uom") or "Stems"
 	sales_uom = frappe.db.get_value("Item", item_code, "sales_uom") or stock_uom

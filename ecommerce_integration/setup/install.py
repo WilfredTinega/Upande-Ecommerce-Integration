@@ -77,11 +77,31 @@ def resync_app_resources():
 # Normalise all of that here so every install/migrate lands the same working
 # state. Safe to run repeatedly.
 _WORKSPACE_NAME = "Ecommerce"
+# The workspace was first shipped as "Ecommerce Integration" before being renamed
+# to "Ecommerce". A site migrated in between keeps that orphaned record (and the
+# Desktop Icon auto-generated from it), showing a duplicate workspace/tile. Drop it.
+_LEGACY_WORKSPACE_NAME = "Ecommerce Integration"
 
 
 def normalize_ecommerce_workspace():
 	"""Force the Ecommerce Workspace's name/title/label consistent and clear any
 	self-referential parent_page so the Desk icon opens /app/ecommerce."""
+	# Remove the pre-rename "Ecommerce Integration" workspace if it lingers, so it
+	# doesn't show as a second workspace alongside "Ecommerce".
+	if frappe.db.exists("Workspace", _LEGACY_WORKSPACE_NAME):
+		try:
+			frappe.delete_doc(
+				"Workspace",
+				_LEGACY_WORKSPACE_NAME,
+				ignore_permissions=True,
+				force=True,
+			)
+		except Exception:
+			frappe.log_error(
+				title="ecommerce_integration drop legacy workspace",
+				message=frappe.get_traceback(),
+			)
+
 	if not frappe.db.exists("Workspace", _WORKSPACE_NAME):
 		return
 
@@ -112,7 +132,10 @@ def normalize_ecommerce_workspace():
 		# The sidebar header (Workspace Sidebar) mirrors the title; keep it in step.
 		if frappe.db.exists("Workspace Sidebar", _WORKSPACE_NAME):
 			frappe.db.set_value(
-				"Workspace Sidebar", _WORKSPACE_NAME, "title", _WORKSPACE_NAME,
+				"Workspace Sidebar",
+				_WORKSPACE_NAME,
+				"title",
+				_WORKSPACE_NAME,
 				update_modified=False,
 			)
 	except Exception:
@@ -135,7 +158,11 @@ def normalize_ecommerce_workspace():
 _DESKTOP_ICON_NAME = "Ecommerce"
 # Drop the legacy webshop-owned ("Webshop"/"Upande Webshop") icons so only the
 # title-matched "Ecommerce" icon remains.
-_STALE_DESKTOP_ICON_NAMES = ("Upande Webshop", "Webshop")
+# The Desktop Icon Frappe auto-generates for this app/workspace is labelled with
+# the app title ("Ecommerce Integration") and links to the bare "/ecommerce"
+# route; drop it so only our title-matched "Ecommerce" icon (-> /app/ecommerce)
+# remains. (Kept as a tuple in case more legacy names accrue.)
+_STALE_DESKTOP_ICON_NAMES = ("Ecommerce Integration",)
 
 
 def ensure_desktop_icon():
@@ -143,8 +170,10 @@ def ensure_desktop_icon():
 	for stale in _STALE_DESKTOP_ICON_NAMES:
 		if frappe.db.exists("Desktop Icon", stale):
 			frappe.delete_doc(
-				"Desktop Icon", stale,
-				ignore_permissions=True, force=True,
+				"Desktop Icon",
+				stale,
+				ignore_permissions=True,
+				force=True,
 			)
 
 	payload = {
@@ -155,9 +184,16 @@ def ensure_desktop_icon():
 		"icon_type": "App",
 		"link_type": "External",
 		"link": "/app/ecommerce",
-		# No custom logo asset — this app is self-contained and does not reference
-		# another app's assets. Frappe renders the default App icon.
-		"logo_url": "",
+		# `link_to` is a Dynamic Link whose target doctype is read from `link_type`.
+		# Frappe's own create_desktop_icons_from_workspace() seeds a "Workspace Sidebar"
+		# icon for our public workspace with link_to="Ecommerce"; flipping link_type to
+		# "External" without clearing link_to makes link validation resolve a doctype
+		# literally named "External" and blow up ("DocType External not found").
+		"link_to": None,
+		"sidebar": None,
+		# Same logo as upande_ta, vendored into this app's own assets so the icon
+		# carries no dependency on another app being installed.
+		"logo_url": "/assets/ecommerce_integration/images/upande_logo.ico",
 		"force_show": 1,
 		"hidden": 0,
 		"standard": 1,

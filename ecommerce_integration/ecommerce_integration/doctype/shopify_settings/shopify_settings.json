@@ -1,0 +1,549 @@
+{
+ "actions": [],
+ "creation": "2026-07-30 08:30:00",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "subscription_tab",
+  "sync_section",
+  "sub_enabled",
+  "sub_event_frequency",
+  "sub_cron_format",
+  "sync_now",
+  "column_break_sync",
+  "last_sync_updated_at",
+  "sub_last_run",
+  "sub_next_run",
+  "column_break_mics",
+  "last_sync_summary",
+  "exp_section",
+  "exp_enabled",
+  "exp_event_frequency",
+  "exp_cron_format",
+  "expire_now",
+  "column_break_exp",
+  "exp_last_run",
+  "exp_next_run",
+  "column_break_fdhz",
+  "last_expiry_summary",
+  "order_sync_tab",
+  "attr_section",
+  "attr_duration",
+  "attr_frequency",
+  "attr_start_date",
+  "column_break_attr",
+  "attr_note",
+  "attr_special_requests",
+  "attr_recipient_name",
+  "column_break_hpom",
+  "default_frequency",
+  "attr_recipient_phone",
+  "order_section",
+  "ord_enabled",
+  "ord_event_frequency",
+  "ord_cron_format",
+  "order_lookback_days",
+  "sync_orders_now",
+  "column_break_order",
+  "ord_last_run",
+  "ord_next_run",
+  "last_order_updated_at",
+  "column_break_fogr",
+  "last_order_sync_summary",
+  "allocation_tab",
+  "allocation_section",
+  "alloc_enabled",
+  "alloc_event_frequency",
+  "alloc_cron_format",
+  "generate_allocations",
+  "column_break_alloc",
+  "default_source_warehouse",
+  "default_reserve_warehouse",
+  "alloc_last_run",
+  "alloc_next_run",
+  "column_break_nrgd",
+  "last_allocation_summary",
+  "default_settings_tab",
+  "defaults_section",
+  "default_company",
+  "default_customer",
+  "create_missing_customer",
+  "column_break_defaults",
+  "default_customer_group",
+  "default_territory",
+  "default_price_list",
+  "map_section",
+  "seed_product_map",
+  "map_summary",
+  "settings_and_connection_tab",
+  "connection_section",
+  "enabled",
+  "shop_domain",
+  "api_version",
+  "column_break_conn",
+  "access_token",
+  "test_connection",
+  "connection_status"
+ ],
+ "fields": [
+  {
+   "fieldname": "connection_section",
+   "fieldtype": "Section Break",
+   "label": "Connection"
+  },
+  {
+   "default": "0",
+   "fieldname": "enabled",
+   "fieldtype": "Check",
+   "label": "Enabled"
+  },
+  {
+   "description": "e.g. upande.myshopify.com",
+   "fieldname": "shop_domain",
+   "fieldtype": "Data",
+   "label": "Shop Domain"
+  },
+  {
+   "default": "2026-07",
+   "fieldname": "api_version",
+   "fieldtype": "Data",
+   "label": "Admin API Version"
+  },
+  {
+   "fieldname": "column_break_conn",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "access_token",
+   "fieldtype": "Password",
+   "label": "Admin API Access Token"
+  },
+  {
+   "fieldname": "test_connection",
+   "fieldtype": "Button",
+   "label": "Test Connection"
+  },
+  {
+   "fieldname": "connection_status",
+   "fieldtype": "Data",
+   "label": "Connection Status",
+   "read_only": 1
+  },
+  {
+   "fieldname": "sync_section",
+   "fieldtype": "Section Break",
+   "label": "Subscription Contract Sync"
+  },
+  {
+   "default": "0",
+   "fieldname": "sub_enabled",
+   "fieldtype": "Check",
+   "label": "Enabled"
+  },
+  {
+   "default": "Hourly",
+   "fieldname": "sub_event_frequency",
+   "fieldtype": "Select",
+   "label": "Event Frequency",
+   "options": "\nAll\nHourly\nHourly Long\nDaily\nDaily Long\nWeekly\nCron"
+  },
+  {
+   "depends_on": "eval:doc.sub_event_frequency=='Cron'",
+   "fieldname": "sub_cron_format",
+   "fieldtype": "Data",
+   "label": "Cron Format"
+  },
+  {
+   "fieldname": "sync_now",
+   "fieldtype": "Button",
+   "label": "Sync Now"
+  },
+  {
+   "fieldname": "column_break_sync",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "last_sync_updated_at",
+   "fieldtype": "Datetime",
+   "label": "Sync Watermark"
+  },
+  {
+   "fieldname": "sub_last_run",
+   "fieldtype": "Datetime",
+   "label": "Last Run",
+   "read_only": 1
+  },
+  {
+   "fieldname": "sub_next_run",
+   "fieldtype": "Datetime",
+   "label": "Next Run",
+   "read_only": 1
+  },
+  {
+   "fieldname": "last_sync_summary",
+   "fieldtype": "Small Text",
+   "label": "Last Sync Summary",
+   "read_only": 1
+  },
+  {
+   "fieldname": "order_section",
+   "fieldtype": "Section Break",
+   "label": "Order Sync"
+  },
+  {
+   "default": "0",
+   "fieldname": "ord_enabled",
+   "fieldtype": "Check",
+   "label": "Enabled"
+  },
+  {
+   "default": "Hourly",
+   "fieldname": "ord_event_frequency",
+   "fieldtype": "Select",
+   "label": "Event Frequency",
+   "options": "\nAll\nHourly\nHourly Long\nDaily\nDaily Long\nWeekly\nCron"
+  },
+  {
+   "depends_on": "eval:doc.ord_event_frequency=='Cron'",
+   "fieldname": "ord_cron_format",
+   "fieldtype": "Data",
+   "label": "Cron Format"
+  },
+  {
+   "default": "30",
+   "fieldname": "order_lookback_days",
+   "fieldtype": "Int",
+   "label": "Lookback Days"
+  },
+  {
+   "fieldname": "sync_orders_now",
+   "fieldtype": "Button",
+   "label": "Sync Orders Now"
+  },
+  {
+   "fieldname": "column_break_order",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "ord_last_run",
+   "fieldtype": "Datetime",
+   "label": "Last Run",
+   "read_only": 1
+  },
+  {
+   "fieldname": "ord_next_run",
+   "fieldtype": "Datetime",
+   "label": "Next Run",
+   "read_only": 1
+  },
+  {
+   "fieldname": "last_order_sync_summary",
+   "fieldtype": "Small Text",
+   "label": "Last Order Sync Summary",
+   "read_only": 1
+  },
+  {
+   "fieldname": "allocation_section",
+   "fieldtype": "Section Break",
+   "label": "Allocation"
+  },
+  {
+   "default": "0",
+   "fieldname": "alloc_enabled",
+   "fieldtype": "Check",
+   "label": "Generate Allocations"
+  },
+  {
+   "default": "Daily",
+   "fieldname": "alloc_event_frequency",
+   "fieldtype": "Select",
+   "label": "Event Frequency",
+   "options": "\nAll\nHourly\nDaily\nWeekly\nCron"
+  },
+  {
+   "depends_on": "eval:doc.alloc_event_frequency=='Cron'",
+   "fieldname": "alloc_cron_format",
+   "fieldtype": "Data",
+   "label": "Cron Format"
+  },
+  {
+   "fieldname": "generate_allocations",
+   "fieldtype": "Button",
+   "label": "Generate Allocations Now"
+  },
+  {
+   "fieldname": "column_break_alloc",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "default_source_warehouse",
+   "fieldtype": "Link",
+   "label": "Default Source Warehouse",
+   "options": "Warehouse"
+  },
+  {
+   "fieldname": "default_reserve_warehouse",
+   "fieldtype": "Link",
+   "label": "Default Reserve Warehouse",
+   "options": "Warehouse"
+  },
+  {
+   "fieldname": "alloc_last_run",
+   "fieldtype": "Datetime",
+   "label": "Last Run",
+   "read_only": 1
+  },
+  {
+   "fieldname": "alloc_next_run",
+   "fieldtype": "Datetime",
+   "label": "Next Run",
+   "read_only": 1
+  },
+  {
+   "fieldname": "last_allocation_summary",
+   "fieldtype": "Small Text",
+   "label": "Last Allocation Run",
+   "read_only": 1
+  },
+  {
+   "fieldname": "defaults_section",
+   "fieldtype": "Section Break",
+   "label": "Defaults"
+  },
+  {
+   "fieldname": "default_company",
+   "fieldtype": "Link",
+   "label": "Company",
+   "options": "Company"
+  },
+  {
+   "fieldname": "default_customer",
+   "fieldtype": "Link",
+   "label": "Fallback Customer",
+   "options": "Customer"
+  },
+  {
+   "default": "0",
+   "fieldname": "create_missing_customer",
+   "fieldtype": "Check",
+   "label": "Create Missing Customers"
+  },
+  {
+   "fieldname": "column_break_defaults",
+   "fieldtype": "Column Break"
+  },
+  {
+   "depends_on": "create_missing_customer",
+   "fieldname": "default_customer_group",
+   "fieldtype": "Link",
+   "label": "Customer Group",
+   "options": "Customer Group"
+  },
+  {
+   "depends_on": "create_missing_customer",
+   "fieldname": "default_territory",
+   "fieldtype": "Link",
+   "label": "Territory",
+   "options": "Territory"
+  },
+  {
+   "fieldname": "default_price_list",
+   "fieldtype": "Link",
+   "label": "Price List",
+   "options": "Price List"
+  },
+  {
+   "fieldname": "map_section",
+   "fieldtype": "Section Break",
+   "label": "Product Map"
+  },
+  {
+   "fieldname": "seed_product_map",
+   "fieldtype": "Button",
+   "label": "Seed / Refresh Product Map"
+  },
+  {
+   "fieldname": "map_summary",
+   "fieldtype": "Small Text",
+   "label": "Product Map Summary",
+   "read_only": 1
+  },
+  {
+   "fieldname": "attr_section",
+   "fieldtype": "Section Break",
+   "label": "Order Attribute Mapping"
+  },
+  {
+   "fieldname": "attr_duration",
+   "fieldtype": "Data",
+   "label": "Duration Attribute"
+  },
+  {
+   "fieldname": "attr_frequency",
+   "fieldtype": "Data",
+   "label": "Frequency Attribute"
+  },
+  {
+   "fieldname": "attr_start_date",
+   "fieldtype": "Data",
+   "label": "Start / First Delivery Date Attribute"
+  },
+  {
+   "fieldname": "column_break_attr",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "attr_note",
+   "fieldtype": "Data",
+   "label": "Handwritten Note Attribute"
+  },
+  {
+   "fieldname": "attr_special_requests",
+   "fieldtype": "Data",
+   "label": "Special Requests Attribute"
+  },
+  {
+   "fieldname": "attr_recipient_name",
+   "fieldtype": "Data",
+   "label": "Recipient Name Attribute"
+  },
+  {
+   "fieldname": "attr_recipient_phone",
+   "fieldtype": "Data",
+   "label": "Recipient Phone Attribute"
+  },
+  {
+   "default": "Monthly",
+   "fieldname": "default_frequency",
+   "fieldtype": "Select",
+   "label": "Default Frequency",
+   "options": "\nWeekly\nFortnightly\nMonthly"
+  },
+  {
+   "fieldname": "exp_section",
+   "fieldtype": "Section Break",
+   "label": "Subscription Expiry"
+  },
+  {
+   "default": "0",
+   "fieldname": "exp_enabled",
+   "fieldtype": "Check",
+   "label": "Enabled"
+  },
+  {
+   "default": "Daily",
+   "fieldname": "exp_event_frequency",
+   "fieldtype": "Select",
+   "label": "Event Frequency",
+   "options": "\nAll\nHourly\nDaily\nWeekly\nCron"
+  },
+  {
+   "depends_on": "eval:doc.exp_event_frequency=='Cron'",
+   "fieldname": "exp_cron_format",
+   "fieldtype": "Data",
+   "label": "Cron Format"
+  },
+  {
+   "fieldname": "expire_now",
+   "fieldtype": "Button",
+   "label": "Run Expiry Now"
+  },
+  {
+   "fieldname": "column_break_exp",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "exp_last_run",
+   "fieldtype": "Datetime",
+   "label": "Last Run",
+   "read_only": 1
+  },
+  {
+   "fieldname": "exp_next_run",
+   "fieldtype": "Datetime",
+   "label": "Next Run",
+   "read_only": 1
+  },
+  {
+   "fieldname": "last_expiry_summary",
+   "fieldtype": "Small Text",
+   "label": "Last Expiry Run",
+   "read_only": 1
+  },
+  {
+   "fieldname": "last_order_updated_at",
+   "fieldtype": "Datetime",
+   "label": "Order Sync Watermark"
+  },
+  {
+   "fieldname": "subscription_tab",
+   "fieldtype": "Tab Break",
+   "label": "Subscription Sync"
+  },
+  {
+   "fieldname": "settings_and_connection_tab",
+   "fieldtype": "Tab Break",
+   "label": "Connection"
+  },
+  {
+   "fieldname": "order_sync_tab",
+   "fieldtype": "Tab Break",
+   "label": "Order Sync"
+  },
+  {
+   "fieldname": "allocation_tab",
+   "fieldtype": "Tab Break",
+   "label": "Allocation"
+  },
+  {
+   "fieldname": "default_settings_tab",
+   "fieldtype": "Tab Break",
+   "label": "Default Settings"
+  },
+  {
+   "fieldname": "column_break_mics",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "column_break_fdhz",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "column_break_nrgd",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "column_break_hpom",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "column_break_fogr",
+   "fieldtype": "Column Break"
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "issingle": 1,
+ "links": [],
+ "modified": "2026-07-30 18:30:58.612759",
+ "modified_by": "Administrator",
+ "module": "Ecommerce Integration",
+ "name": "Shopify Settings",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "print": 1,
+   "read": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "row_format": "Dynamic",
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
+}

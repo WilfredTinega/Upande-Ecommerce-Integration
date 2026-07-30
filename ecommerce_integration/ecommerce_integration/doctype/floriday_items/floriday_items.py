@@ -211,6 +211,11 @@ def _find_or_create_floriday_item(item):
 
 
 def get_item_mapping():
+	from ecommerce_integration.ecommerce_integration.utils import has_doctypes
+
+	if not has_doctypes("Floriday Items", "Stem Length Price"):
+		return {}
+
 	rows = frappe.db.sql(
 		"""
 		select fi.item_code, slp.trade_item_id, slp.stem_length
@@ -229,7 +234,11 @@ def get_item_mapping():
 
 
 def get_item_code_from_trade_item_id(trade_item_id):
+	from ecommerce_integration.ecommerce_integration.utils import has_doctypes
+
 	if not trade_item_id:
+		return None
+	if not has_doctypes("Floriday Items", "Stem Length Price"):
 		return None
 	row = frappe.db.sql(
 		"""

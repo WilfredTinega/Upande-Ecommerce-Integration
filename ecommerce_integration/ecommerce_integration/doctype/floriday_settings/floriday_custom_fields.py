@@ -158,8 +158,8 @@ FLORIDAY_CUSTOM_FIELDS = [
             "insert_after": "warehouse_name",
         },
     },
-    # Stem-length columns: present on kaitet (custom-field model), intentionally
-    # absent on variant sites (mona) where stem length is in the variant item_code.
+    # Stem-length columns: present on custom-field-model sites, intentionally
+    # absent on variant sites where stem length is in the variant item_code.
     {
         "dt": "Stock Entry Detail",
         "df": {

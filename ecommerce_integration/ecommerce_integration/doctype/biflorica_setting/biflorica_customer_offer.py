@@ -241,6 +241,13 @@ def _biflorica_item_qty_source(warehouse):
 
 
 def get_enabled_offer_items(warehouse=None):
+    from ecommerce_integration.ecommerce_integration.utils import has_doctypes
+
+    # Both tables belong to upande_webshop; with no published webshop prices there
+    # are no offer items to build.
+    if not has_doctypes("Webshop Item Prices", "Stem Length Price"):
+        return []
+
     rows = frappe.db.sql(
         """
         SELECT wip.item_code, slp.stem_length, slp.stock_qty, slp.rate

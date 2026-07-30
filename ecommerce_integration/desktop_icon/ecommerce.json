@@ -8,13 +8,15 @@
  "idx": 0,
  "label": "Ecommerce",
  "link": "/app/ecommerce",
- "link_type": "External",
- "logo_url": "",
- "modified": "2026-07-17 13:36:49.410564",
+ "link_to": "Ecommerce",
+ "link_type": "Workspace Sidebar",
+ "logo_url": "/assets/ecommerce_integration/images/upande_logo.ico",
+ "modified": "2026-07-30 18:59:18.077685",
  "modified_by": "Administrator",
  "name": "Ecommerce",
  "owner": "Administrator",
  "restrict_removal": 0,
  "roles": [],
+ "sidebar": "Ecommerce",
  "standard": 1
 }
