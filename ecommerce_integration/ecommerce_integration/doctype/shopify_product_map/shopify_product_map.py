@@ -101,6 +101,9 @@ def seed_product_map():
 	Existing rows keep their human-set classification and stem counts — only the
 	title and product id are refreshed. Safe to re-run whenever the shop changes.
 	"""
+	from ecommerce_integration.ecommerce_integration.doctype.shopify_api_error_log.shopify_api_error_log import (
+		flush_api_log,
+	)
 	from ecommerce_integration.ecommerce_integration.doctype.shopify_settings.shopify_settings import (
 		get_shopify_settings,
 		shopify_graphql,
@@ -114,7 +117,9 @@ def seed_product_map():
 
 	while has_next and pages < 40:
 		pages += 1
-		data = shopify_graphql(PRODUCTS_QUERY, {"cursor": cursor}, settings=settings)
+		data = shopify_graphql(
+			PRODUCTS_QUERY, {"cursor": cursor}, settings=settings, operation="Seed Product Map"
+		)
 		connection = data.get("products") or {}
 		page_info = connection.get("pageInfo") or {}
 
@@ -163,6 +168,7 @@ def seed_product_map():
 	summary = f"created {created}, refreshed {updated}"
 	settings.db_set("map_summary", summary, update_modified=False)
 	frappe.db.commit()
+	flush_api_log()
 	return {"summary": summary, "created": created, "updated": updated}
 
 

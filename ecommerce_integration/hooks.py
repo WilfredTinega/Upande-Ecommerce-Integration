@@ -109,16 +109,13 @@ after_install = "ecommerce_integration.setup.install.after_install"
 #      doctypes, ...) bypassing Frappe's modified-timestamp skip.
 #   2. normalize_ecommerce_workspace — keep the "Ecommerce" workspace's
 #      name/title/label consistent and parent_page clear so /app/ecommerce opens.
-#   3. ensure_desktop_icon — upsert the launcher Desktop Icon pointing at
-#      /app/ecommerce and drop stale auto-generated ones.
-#   4. Floriday + Biflorica resync_scheduled_jobs — restore Scheduled Job Type
+#   3. Floriday + Biflorica resync_scheduled_jobs — restore Scheduled Job Type
 #      rows (user-configured per Settings doc, not in scheduler_events) that
 #      Frappe's scheduler sync prunes on migrate.
-#   5. ensure_biflorica_custom_fields — re-apply Biflorica custom field defs.
+#   4. ensure_biflorica_custom_fields — re-apply Biflorica custom field defs.
 after_migrate = [
     "ecommerce_integration.setup.install.resync_app_resources",
     "ecommerce_integration.setup.install.normalize_ecommerce_workspace",
-    "ecommerce_integration.setup.install.ensure_desktop_icon",
     "ecommerce_integration.ecommerce_integration.doctype.floriday_settings.floriday_settings.resync_scheduled_jobs",
     "ecommerce_integration.ecommerce_integration.doctype.biflorica_setting.biflorica_setting.resync_scheduled_jobs",
     "ecommerce_integration.ecommerce_integration.doctype.biflorica_setting.biflorica_custom_fields.ensure_biflorica_custom_fields",
@@ -290,9 +287,12 @@ export_python_type_annotations = True
 # Disabled: the migrated Floriday/Biflorica controllers are not yet annotated.
 require_type_annotated_api_methods = False
 
-# default_log_clearing_doctypes = {
-# 	"Logging DocType Name": 30  # days to retain logs
-# }
+# Registers the Shopify API log with Frappe's Log Settings so old entries are
+# cleared automatically. The retention shown here is only the seeded default —
+# Shopify Settings > Keep Logs For (Days) writes the live value into Log Settings.
+default_log_clearing_doctypes = {
+    "Shopify API Error Log": 30,
+}
 
 # Translation
 # ------------

@@ -16,8 +16,12 @@ import json
 import frappe
 from frappe.utils import cint, cstr, flt, get_datetime, get_weekday, getdate, now_datetime
 
+from ecommerce_integration.ecommerce_integration.doctype.shopify_api_error_log.shopify_api_error_log import (
+	flush_api_log,
+)
 from ecommerce_integration.ecommerce_integration.doctype.shopify_settings.shopify_settings import (
 	get_shopify_settings,
+	shopify_datetime,
 	shopify_graphql,
 )
 
@@ -116,8 +120,8 @@ def _resolve_customer(email, display_name, settings):
 def _apply_contract(doc, node, settings):
 	doc.status = STATUS_MAP.get(node.get("status") or "", "")
 	doc.currency = node.get("currencyCode")
-	doc.shopify_created_at = node.get("createdAt")
-	doc.shopify_updated_at = node.get("updatedAt")
+	doc.shopify_created_at = shopify_datetime(node.get("createdAt"))
+	doc.shopify_updated_at = shopify_datetime(node.get("updatedAt"))
 	doc.last_synced_on = now_datetime()
 	doc.sync_error = None
 
@@ -135,7 +139,7 @@ def _apply_contract(doc, node, settings):
 	doc.interval_count = cint(billing.get("intervalCount") or delivery_policy.get("intervalCount"))
 
 	if node.get("nextBillingDate"):
-		next_billing = get_datetime(node.get("nextBillingDate"))
+		next_billing = shopify_datetime(node.get("nextBillingDate"))
 		doc.next_billing_date = getdate(next_billing)
 		doc.delivery_day = get_weekday(next_billing)
 
@@ -208,7 +212,10 @@ def sync_subscription_contracts(force=False):
 		pages += 1
 		try:
 			data = shopify_graphql(
-				CONTRACTS_QUERY, {"cursor": cursor, "pageSize": PAGE_SIZE}, settings=settings
+				CONTRACTS_QUERY,
+				{"cursor": cursor, "pageSize": PAGE_SIZE},
+				settings=settings,
+				operation="Sync Subscription Contracts",
 			)
 		except Exception as e:
 			# A mistyped field or a missing access scope lands here. Record it verbatim
@@ -226,7 +233,7 @@ def sync_subscription_contracts(force=False):
 			if not contract_id:
 				continue
 
-			remote_updated = get_datetime(node.get("updatedAt")) if node.get("updatedAt") else None
+			remote_updated = shopify_datetime(node.get("updatedAt"))
 
 			# Watermark is forward-only: anything older was handled on an earlier run.
 			if watermark_at_entry and remote_updated and remote_updated < watermark_at_entry:
@@ -279,9 +286,13 @@ def sync_subscription_contracts(force=False):
 	)
 	settings.db_set("last_sync_summary", summary, update_modified=False)
 	frappe.db.commit()
+	flush_api_log()
 
 	return {
 		"summary": summary,
+		# A GraphQL-level abort is swallowed above so a scheduled run doesn't crash;
+		# flag it so callers can still tell success from a query that never ran.
+		"aborted": bool(aborted),
 		"created": created,
 		"updated": updated,
 		"unchanged": skipped,

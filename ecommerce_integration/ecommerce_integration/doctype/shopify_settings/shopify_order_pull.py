@@ -18,14 +18,19 @@ import json
 import re
 
 import frappe
-from frappe.utils import cint, cstr, flt, get_datetime, getdate, now_datetime
+from frappe.utils import add_days, cint, cstr, flt, get_datetime, getdate, now_datetime
 
+from ecommerce_integration.ecommerce_integration.doctype.shopify_api_error_log.shopify_api_error_log import (
+	flush_api_log,
+)
 from ecommerce_integration.ecommerce_integration.doctype.shopify_product_map.shopify_product_map import (
 	resolve_line,
 )
 from ecommerce_integration.ecommerce_integration.doctype.shopify_settings.shopify_settings import (
 	get_shopify_settings,
+	shopify_datetime,
 	shopify_graphql,
+	to_shopify_utc,
 )
 from ecommerce_integration.ecommerce_integration.doctype.shopify_settings.shopify_subscription_lifecycle import (
 	end_date_for,
@@ -85,6 +90,36 @@ def _first_int(text):
 	"""'3 boxes over 3 months' -> 3. Returns 0 when there's no leading number."""
 	match = re.search(r"\d+", cstr(text))
 	return cint(match.group()) if match else 0
+
+
+def _parse_frequency(text, default="Monthly"):
+	"""Map whatever the storefront wrote into Weekly / Fortnightly / Monthly.
+
+	Seal Subscriptions expresses cadence several ways on the same order —
+	`_frequency_days` = "14", `Frequency` = "Delivered every 14 days",
+	`_frequency_unit` = "months", `_sealsub_interval_7-day` — so accept a day count
+	or a unit word rather than requiring one exact spelling.
+	"""
+	raw = cstr(text).strip().lower()
+	if not raw:
+		return default
+
+	for word, value in (("fortnight", "Fortnightly"), ("week", "Weekly"), ("month", "Monthly")):
+		if word in raw:
+			# "every 2 weeks" is fortnightly, not weekly.
+			if value == "Weekly" and re.search(r"\b2\b", raw):
+				return "Fortnightly"
+			return value
+
+	days = _first_int(raw)
+	if days:
+		if days <= 7:
+			return "Weekly"
+		if days <= 20:
+			return "Fortnightly"
+		return "Monthly"
+
+	return default
 
 
 def _maybe_date(text):
@@ -151,9 +186,9 @@ def _collect_attributes(node):
 
 def _apply_order(doc, node, settings, attributes):
 	doc.order_name = node.get("name")
-	doc.order_date = node.get("createdAt")
-	doc.shopify_created_at = node.get("createdAt")
-	doc.shopify_updated_at = node.get("updatedAt")
+	doc.order_date = shopify_datetime(node.get("createdAt"))
+	doc.shopify_created_at = shopify_datetime(node.get("createdAt"))
+	doc.shopify_updated_at = shopify_datetime(node.get("updatedAt"))
 	doc.last_synced_on = now_datetime()
 	doc.financial_status = node.get("displayFinancialStatus")
 	doc.fulfillment_status = node.get("displayFulfillmentStatus")
@@ -196,12 +231,12 @@ def _apply_order(doc, node, settings, attributes):
 
 	# ---- subscription terms --------------------------------------------------
 	doc.duration_boxes = _first_int(attributes.get(settings.attr_duration)) or 1
-	doc.frequency = attributes.get(settings.attr_frequency) or settings.default_frequency or "Monthly"
-	if doc.frequency not in ("Weekly", "Fortnightly", "Monthly"):
-		doc.frequency = settings.default_frequency or "Monthly"
+	doc.frequency = _parse_frequency(
+		attributes.get(settings.attr_frequency), settings.default_frequency or "Monthly"
+	)
 
 	start = _maybe_date(attributes.get(settings.attr_start_date))
-	doc.first_delivery_date = start or getdate(node.get("createdAt"))
+	doc.first_delivery_date = start or getdate(shopify_datetime(node.get("createdAt")))
 	doc.start_date = doc.first_delivery_date
 	doc.end_date = end_date_for(doc.start_date, doc.frequency, doc.duration_boxes)
 	if not doc.requested_delivery_date:
@@ -339,9 +374,15 @@ def sync_orders(force=False):
 
 	# Unlike subscriptionContracts, the orders connection does support a
 	# server-side updated_at filter, so this is a genuine incremental pull.
-	order_filter = None
+	# Shopify filters in UTC; the watermark is stored in system time.
 	if watermark_at_entry:
-		order_filter = f"updated_at:>='{watermark_at_entry.strftime('%Y-%m-%dT%H:%M:%SZ')}'"
+		since = watermark_at_entry
+	else:
+		# First run has no watermark. Bound it by Lookback Days rather than pulling
+		# the store's entire order history — and note plain read_orders only exposes
+		# the last 60 days anyway.
+		since = add_days(now_datetime(), -(cint(settings.order_lookback_days) or 30))
+	order_filter = f"updated_at:>='{to_shopify_utc(since)}'"
 
 	cursor = None
 	has_next = True
@@ -355,6 +396,7 @@ def sync_orders(force=False):
 				ORDERS_QUERY,
 				{"cursor": cursor, "pageSize": PAGE_SIZE, "filter": order_filter},
 				settings=settings,
+				operation="Sync Orders",
 			)
 		except Exception as e:
 			aborted = cstr(e)
@@ -370,7 +412,7 @@ def sync_orders(force=False):
 			if not order_id:
 				continue
 
-			remote_updated = get_datetime(node.get("updatedAt")) if node.get("updatedAt") else None
+			remote_updated = shopify_datetime(node.get("updatedAt"))
 			doc_name = f"SHOP-ORD-{order_id}"
 			exists = frappe.db.exists("Shopify Order", doc_name)
 
@@ -421,9 +463,12 @@ def sync_orders(force=False):
 	)
 	settings.db_set("last_order_sync_summary", summary, update_modified=False)
 	frappe.db.commit()
+	flush_api_log()
 
 	return {
 		"summary": summary,
+		# See sync_subscription_contracts: an aborted query is reported, not raised.
+		"aborted": bool(aborted),
 		"created": created,
 		"updated": updated,
 		"unchanged": skipped,

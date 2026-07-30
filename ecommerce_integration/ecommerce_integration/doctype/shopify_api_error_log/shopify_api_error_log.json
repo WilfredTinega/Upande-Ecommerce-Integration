@@ -1,0 +1,237 @@
+{
+ "actions": [],
+ "creation": "2026-07-30 20:30:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "autoname": "hash",
+ "naming_rule": "Random",
+ "field_order": [
+  "status",
+  "operation",
+  "graphql_operation",
+  "error_code",
+  "duration_ms",
+  "column_break_head",
+  "timestamp",
+  "attempts",
+  "user",
+  "endpoint_section",
+  "shop_domain",
+  "api_version",
+  "column_break_req",
+  "http_method",
+  "endpoint",
+  "error_section",
+  "error_message",
+  "payload_section",
+  "request_query",
+  "request_variables",
+  "response_snippet",
+  "reference_section",
+  "reference_doctype",
+  "reference_name"
+ ],
+ "fields": [
+  {
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "label": "Status",
+   "options": "Success\nFailed",
+   "reqd": 1,
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "columns": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "operation",
+   "fieldtype": "Data",
+   "label": "Operation",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "columns": 2,
+   "read_only": 1,
+   "description": "Which part of the integration made the call."
+  },
+  {
+   "fieldname": "graphql_operation",
+   "fieldtype": "Data",
+   "label": "GraphQL Operation",
+   "in_list_view": 1,
+   "columns": 2,
+   "read_only": 1,
+   "description": "Operation name parsed from the query document."
+  },
+  {
+   "fieldname": "error_code",
+   "fieldtype": "Data",
+   "label": "Error Code",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "columns": 2,
+   "read_only": 1,
+   "description": "e.g. ACCESS_DENIED or THROTTLED."
+  },
+  {
+   "fieldname": "duration_ms",
+   "fieldtype": "Int",
+   "label": "Duration (ms)",
+   "in_list_view": 1,
+   "columns": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_head",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "timestamp",
+   "fieldtype": "Datetime",
+   "label": "Timestamp",
+   "read_only": 1
+  },
+  {
+   "fieldname": "attempts",
+   "fieldtype": "Int",
+   "label": "Attempts",
+   "read_only": 1,
+   "description": "More than one means the call was retried, normally after a THROTTLED response."
+  },
+  {
+   "fieldname": "user",
+   "fieldtype": "Link",
+   "label": "User",
+   "options": "User",
+   "read_only": 1,
+   "description": "Blank-ish (Administrator) when a scheduled job made the call."
+  },
+  {
+   "fieldname": "endpoint_section",
+   "fieldtype": "Section Break",
+   "label": "Request"
+  },
+  {
+   "fieldname": "shop_domain",
+   "fieldtype": "Data",
+   "label": "Shop Domain",
+   "read_only": 1
+  },
+  {
+   "fieldname": "api_version",
+   "fieldtype": "Data",
+   "label": "API Version",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_req",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "http_method",
+   "fieldtype": "Data",
+   "label": "HTTP Method",
+   "read_only": 1
+  },
+  {
+   "fieldname": "endpoint",
+   "fieldtype": "Data",
+   "label": "Endpoint",
+   "read_only": 1
+  },
+  {
+   "fieldname": "error_section",
+   "fieldtype": "Section Break",
+   "label": "Outcome",
+   "depends_on": "eval:doc.status=='Failed'"
+  },
+  {
+   "fieldname": "error_message",
+   "fieldtype": "Small Text",
+   "label": "Error Message",
+   "read_only": 1
+  },
+  {
+   "fieldname": "payload_section",
+   "fieldtype": "Section Break",
+   "label": "Payload",
+   "collapsible": 1
+  },
+  {
+   "fieldname": "request_query",
+   "fieldtype": "Code",
+   "label": "Query",
+   "options": "GraphQL",
+   "read_only": 1
+  },
+  {
+   "fieldname": "request_variables",
+   "fieldtype": "Code",
+   "label": "Variables",
+   "options": "JSON",
+   "read_only": 1
+  },
+  {
+   "fieldname": "response_snippet",
+   "fieldtype": "Code",
+   "label": "Response",
+   "options": "JSON",
+   "read_only": 1,
+   "description": "Truncated. Full payloads can be large, so this is capped."
+  },
+  {
+   "fieldname": "reference_section",
+   "fieldtype": "Section Break",
+   "label": "Reference",
+   "collapsible": 1
+  },
+  {
+   "fieldname": "reference_doctype",
+   "fieldtype": "Link",
+   "label": "Reference DocType",
+   "options": "DocType",
+   "read_only": 1
+  },
+  {
+   "fieldname": "reference_name",
+   "fieldtype": "Dynamic Link",
+   "label": "Reference Name",
+   "options": "reference_doctype",
+   "read_only": 1
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "links": [],
+ "modified": "2026-07-30 20:30:00.000000",
+ "modified_by": "Administrator",
+ "module": "Ecommerce Integration",
+ "name": "Shopify API Error Log",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "role": "System Manager",
+   "read": 1,
+   "delete": 1,
+   "report": 1,
+   "export": 1,
+   "share": 1,
+   "print": 1,
+   "email": 1
+  },
+  {
+   "role": "Sales Manager",
+   "read": 1,
+   "report": 1,
+   "export": 1,
+   "print": 1
+  }
+ ],
+ "row_format": "Dynamic",
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": [],
+ "title_field": "operation",
+ "track_changes": 0,
+ "default_view": "List",
+ "quick_entry": 0,
+ "editable_grid": 0
+}

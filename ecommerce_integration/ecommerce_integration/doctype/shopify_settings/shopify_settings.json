@@ -76,14 +76,48 @@
   "seed_product_map",
   "map_summary",
   "settings_and_connection_tab",
+  "oauth_section",
+  "client_id",
+  "client_secret",
+  "access_token",
+  "column_break_oauth",
+  "token_expires_on",
+  "oauth_status",
+  "open_shopify_app",
+  "column_break_suvc",
+  "refresh_token_now",
+  "granted_scopes",
+  "column_break_cjud",
+  "requested_scopes",
+  "tok_section",
+  "tok_enabled",
+  "column_break_zlkh",
+  "tok_event_frequency",
+  "column_break_wmgb",
+  "tok_cron_format",
+  "column_break_avfx",
+  "token_refresh_buffer_minutes",
+  "column_break_tok",
+  "tok_last_run",
+  "column_break_ohzw",
+  "tok_next_run",
+  "run_section",
+  "run_full_sync",
+  "column_break_run",
+  "last_full_run",
   "connection_section",
   "enabled",
   "shop_domain",
   "api_version",
   "column_break_conn",
-  "access_token",
+  "connection_status",
   "test_connection",
-  "connection_status"
+  "log_section",
+  "log_api_calls",
+  "log_successful_calls",
+  "column_break_log",
+  "api_log_retention_days",
+  "view_api_log"
  ],
  "fields": [
   {
@@ -519,12 +553,192 @@
   {
    "fieldname": "column_break_fogr",
    "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "oauth_section",
+   "fieldtype": "Section Break",
+   "label": "App Credentials"
+  },
+  {
+   "fieldname": "client_id",
+   "fieldtype": "Data",
+   "label": "Client ID"
+  },
+  {
+   "fieldname": "client_secret",
+   "fieldtype": "Password",
+   "label": "Client Secret"
+  },
+  {
+   "fieldname": "column_break_oauth",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "oauth_status",
+   "fieldtype": "Data",
+   "label": "OAuth Status",
+   "read_only": 1
+  },
+  {
+   "fieldname": "token_expires_on",
+   "fieldtype": "Datetime",
+   "label": "Token Expires On",
+   "read_only": 1
+  },
+  {
+   "fieldname": "refresh_token_now",
+   "fieldtype": "Button",
+   "label": "Refresh Access Token"
+  },
+  {
+   "fieldname": "granted_scopes",
+   "fieldtype": "Small Text",
+   "in_list_view": 1,
+   "label": "Granted Scopes",
+   "read_only": 1
+  },
+  {
+   "default": "1",
+   "fieldname": "tok_enabled",
+   "fieldtype": "Check",
+   "label": "Auto-Refresh Token"
+  },
+  {
+   "default": "Hourly",
+   "fieldname": "tok_event_frequency",
+   "fieldtype": "Select",
+   "label": "Refresh Check Frequency",
+   "options": "\nAll\nHourly\nDaily\nCron"
+  },
+  {
+   "depends_on": "eval:doc.tok_event_frequency=='Cron'",
+   "fieldname": "tok_cron_format",
+   "fieldtype": "Data",
+   "label": "Cron Format"
+  },
+  {
+   "default": "120",
+   "fieldname": "token_refresh_buffer_minutes",
+   "fieldtype": "Int",
+   "label": "Refresh Buffer (Minutes)"
+  },
+  {
+   "fieldname": "tok_last_run",
+   "fieldtype": "Datetime",
+   "label": "Last Refresh Check",
+   "read_only": 1
+  },
+  {
+   "fieldname": "tok_next_run",
+   "fieldtype": "Datetime",
+   "label": "Next Refresh Check",
+   "read_only": 1
+  },
+  {
+   "fieldname": "run_section",
+   "fieldtype": "Section Break",
+   "label": "Run"
+  },
+  {
+   "fieldname": "run_full_sync",
+   "fieldtype": "Button",
+   "label": "Run Full Sync"
+  },
+  {
+   "fieldname": "column_break_run",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "last_full_run",
+   "fieldtype": "Small Text",
+   "label": "Last Full Run",
+   "read_only": 1
+  },
+  {
+   "fieldname": "tok_section",
+   "fieldtype": "Section Break",
+   "label": "Token Auto-Refresh"
+  },
+  {
+   "fieldname": "column_break_tok",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "column_break_zlkh",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "column_break_wmgb",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "column_break_avfx",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "column_break_ohzw",
+   "fieldtype": "Column Break"
+  },
+  {
+   "description": "Every call to Shopify is recorded in Shopify API Error Log \u2014 successes as well as failures \u2014 so there is one place to see what the integration actually sent and received.",
+   "fieldname": "log_section",
+   "fieldtype": "Section Break",
+   "label": "API Logging"
+  },
+  {
+   "default": "1",
+   "fieldname": "log_api_calls",
+   "fieldtype": "Check",
+   "label": "Log API Calls"
+  },
+  {
+   "default": "1",
+   "depends_on": "log_api_calls",
+   "description": "Turn off to keep only failures once the integration is running steadily.",
+   "fieldname": "log_successful_calls",
+   "fieldtype": "Check",
+   "label": "Log Successful Calls Too"
+  },
+  {
+   "fieldname": "column_break_log",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "30",
+   "description": "Entries older than this are cleared by Frappe's daily log cleanup.",
+   "fieldname": "api_log_retention_days",
+   "fieldtype": "Int",
+   "label": "Keep Logs For (Days)"
+  },
+  {
+   "fieldname": "view_api_log",
+   "fieldtype": "Button",
+   "label": "View API Log"
+  },
+  {
+   "fieldname": "column_break_suvc",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "requested_scopes",
+   "fieldtype": "Small Text",
+   "label": "Requested Scopes",
+   "read_only": 1
+  },
+  {
+   "fieldname": "open_shopify_app",
+   "fieldtype": "Button",
+   "label": "Open App Settings in Shopify"
+  },
+  {
+   "fieldname": "column_break_cjud",
+   "fieldtype": "Column Break"
   }
  ],
  "index_web_pages_for_search": 1,
  "issingle": 1,
  "links": [],
- "modified": "2026-07-30 18:30:58.612759",
+ "modified": "2026-07-30 20:55:11.340156",
  "modified_by": "Administrator",
  "module": "Ecommerce Integration",
  "name": "Shopify Settings",

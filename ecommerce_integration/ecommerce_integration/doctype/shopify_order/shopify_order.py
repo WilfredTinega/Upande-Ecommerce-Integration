@@ -13,9 +13,14 @@ class ShopifyOrder(Document):
 	from typing import TYPE_CHECKING
 
 	if TYPE_CHECKING:
-		from ecommerce_integration.ecommerce_integration.doctype.shopify_order_attribute.shopify_order_attribute import ShopifyOrderAttribute
-		from ecommerce_integration.ecommerce_integration.doctype.shopify_order_item.shopify_order_item import ShopifyOrderItem
 		from frappe.types import DF
+
+		from ecommerce_integration.ecommerce_integration.doctype.shopify_order_attribute.shopify_order_attribute import (
+			ShopifyOrderAttribute,
+		)
+		from ecommerce_integration.ecommerce_integration.doctype.shopify_order_item.shopify_order_item import (
+			ShopifyOrderItem,
+		)
 
 		allocation: DF.Link | None
 		allocation_status: DF.Literal["Not Allocated", "Allocated", "Packed", "Shipped", "Cancelled"]

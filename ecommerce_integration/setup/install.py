@@ -7,13 +7,11 @@ from frappe.modules.utils import reload_doc
 def after_install():
 	resync_app_resources()
 	normalize_ecommerce_workspace()
-	ensure_desktop_icon()
 
 
 def after_migrate():
 	resync_app_resources()
 	normalize_ecommerce_workspace()
-	ensure_desktop_icon()
 
 
 # Frappe's migrate skips JSON resources when the DB record's `modified` is newer
@@ -143,70 +141,3 @@ def normalize_ecommerce_workspace():
 			title="ecommerce_integration normalize_ecommerce_workspace",
 			message=frappe.get_traceback(),
 		)
-
-
-# The launcher tile on /desk and /apps is a Desktop Icon. Frappe auto-generates a
-# Desktop Icon from the public Workspace (labelled with the workspace name
-# "Ecommerce", linking to the bare "/ecommerce" route that 404s). Upsert our own
-# External-link icon every install/migrate and drop the stale auto-generated ones,
-# so the tile opens /app/ecommerce.
-#
-# IMPORTANT: the icon's label MUST equal the Workspace title ("Ecommerce"). The
-# Desk sidebar header and the workspace breadcrumb both resolve their icon via
-# frappe.utils.get_desktop_icon_by_label(sidebar_title), where sidebar_title is
-# the active workspace title. A mismatch means the breadcrumb is silently dropped.
-_DESKTOP_ICON_NAME = "Ecommerce"
-# Drop the legacy webshop-owned ("Webshop"/"Upande Webshop") icons so only the
-# title-matched "Ecommerce" icon remains.
-# The Desktop Icon Frappe auto-generates for this app/workspace is labelled with
-# the app title ("Ecommerce Integration") and links to the bare "/ecommerce"
-# route; drop it so only our title-matched "Ecommerce" icon (-> /app/ecommerce)
-# remains. (Kept as a tuple in case more legacy names accrue.)
-_STALE_DESKTOP_ICON_NAMES = ("Ecommerce Integration",)
-
-
-def ensure_desktop_icon():
-	"""Create / refresh the launcher Desktop Icon for the Ecommerce workspace."""
-	for stale in _STALE_DESKTOP_ICON_NAMES:
-		if frappe.db.exists("Desktop Icon", stale):
-			frappe.delete_doc(
-				"Desktop Icon",
-				stale,
-				ignore_permissions=True,
-				force=True,
-			)
-
-	payload = {
-		"doctype": "Desktop Icon",
-		"name": _DESKTOP_ICON_NAME,
-		"label": _DESKTOP_ICON_NAME,
-		"app": "ecommerce_integration",
-		"icon_type": "App",
-		"link_type": "External",
-		"link": "/app/ecommerce",
-		# `link_to` is a Dynamic Link whose target doctype is read from `link_type`.
-		# Frappe's own create_desktop_icons_from_workspace() seeds a "Workspace Sidebar"
-		# icon for our public workspace with link_to="Ecommerce"; flipping link_type to
-		# "External" without clearing link_to makes link validation resolve a doctype
-		# literally named "External" and blow up ("DocType External not found").
-		"link_to": None,
-		"sidebar": None,
-		# Same logo as upande_ta, vendored into this app's own assets so the icon
-		# carries no dependency on another app being installed.
-		"logo_url": "/assets/ecommerce_integration/images/upande_logo.ico",
-		"force_show": 1,
-		"hidden": 0,
-		"standard": 1,
-	}
-
-	if frappe.db.exists("Desktop Icon", _DESKTOP_ICON_NAME):
-		doc = frappe.get_doc("Desktop Icon", _DESKTOP_ICON_NAME)
-		for k, v in payload.items():
-			if k in ("doctype", "name"):
-				continue
-			doc.set(k, v)
-		doc.save(ignore_permissions=True)
-	else:
-		frappe.get_doc(payload).insert(ignore_permissions=True, ignore_if_duplicate=True)
-
-	frappe.clear_cache()
