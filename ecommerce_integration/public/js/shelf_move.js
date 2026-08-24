@@ -9,23 +9,24 @@
 // no stock is moved. Already-enabled rows stay listed with an "On Webshop"
 // checkmark and their published qty pre-filled, so the qty can be edited or the
 // row un-published (untick + "Disable Selected") later. See
-// webshop_item_prices.set_webshop_enabled_stock / get_webshop_enabled_rows.
+// utils/stock_picker.set_webshop_enabled_stock / get_webshop_enabled_rows.
 
-frappe.provide("upande_webshop");
+frappe.provide("ecommerce_integration");
 
-upande_webshop.GET_SHELF_ROWS = "upande_webshop.upande_webshop.utils.shelf_transfer.get_shelf_rows";
-upande_webshop.GET_WAREHOUSE_ROWS =
-	"upande_webshop.upande_webshop.utils.shelf_transfer.get_warehouse_rows";
+ecommerce_integration.GET_SHELF_ROWS =
+	"ecommerce_integration.ecommerce_integration.utils.stock_picker.get_shelf_rows";
+ecommerce_integration.GET_WAREHOUSE_ROWS =
+	"ecommerce_integration.ecommerce_integration.utils.stock_picker.get_warehouse_rows";
 
 // Publish endpoints: set the `enabled` flag + published qty on Stem Length Price.
 // No stock movement.
-upande_webshop.SET_ENABLED_STOCK =
-	"upande_webshop.upande_webshop.doctype.webshop_item_prices.webshop_item_prices.set_webshop_enabled_stock";
-upande_webshop.GET_ENABLED_ROWS =
-	"upande_webshop.upande_webshop.doctype.webshop_item_prices.webshop_item_prices.get_webshop_enabled_rows";
+ecommerce_integration.SET_ENABLED_STOCK =
+	"ecommerce_integration.ecommerce_integration.utils.stock_picker.set_webshop_enabled_stock";
+ecommerce_integration.GET_ENABLED_ROWS =
+	"ecommerce_integration.ecommerce_integration.utils.stock_picker.get_webshop_enabled_rows";
 
-upande_webshop.GET_CUSTOMER_WAREHOUSE_ROWS =
-	"upande_webshop.upande_webshop.doctype.webshop_settings.webshop_settings.get_customer_warehouse_rows";
+ecommerce_integration.GET_CUSTOMER_WAREHOUSE_ROWS =
+	"ecommerce_integration.ecommerce_integration.utils.stock_picker.get_customer_warehouse_rows";
 
 // Render the inline stock picker into `fieldname` on `frm`.
 // opts: { frm, channel, fieldname, visible, source, warehouse }
@@ -37,7 +38,7 @@ upande_webshop.GET_CUSTOMER_WAREHOUSE_ROWS =
 //              panel + enable/disable flow either way.
 //   warehouse — required when source === "customer": the warehouse to list.
 //   visible  — false hides the panel.
-upande_webshop.render_shelf_move_buttons = function (opts) {
+ecommerce_integration.render_shelf_move_buttons = function (opts) {
 	const { frm, channel, fieldname } = opts;
 	const visible = opts.visible !== false;
 	const source = opts.source || "shelf";
@@ -56,7 +57,11 @@ upande_webshop.render_shelf_move_buttons = function (opts) {
 
 	// "customer" source needs a chosen warehouse; prompt instead of loading nothing.
 	if (source === "customer" && !opts.warehouse) {
-		$root.html(`<p class="text-muted small">${__("Select a warehouse for a customer above to manage their stock.")}</p>`);
+		$root.html(
+			`<p class="text-muted small">${__(
+				"Select a warehouse for a customer above to manage their stock."
+			)}</p>`
+		);
 		return;
 	}
 
@@ -64,12 +69,14 @@ upande_webshop.render_shelf_move_buttons = function (opts) {
 
 	let rows_promise;
 	if (source === "customer") {
-		rows_promise = frappe.xcall(upande_webshop.GET_CUSTOMER_WAREHOUSE_ROWS, {
+		rows_promise = frappe.xcall(ecommerce_integration.GET_CUSTOMER_WAREHOUSE_ROWS, {
 			warehouse: opts.warehouse,
 		});
 	} else {
 		const method =
-			source === "warehouse" ? upande_webshop.GET_WAREHOUSE_ROWS : upande_webshop.GET_SHELF_ROWS;
+			source === "warehouse"
+				? ecommerce_integration.GET_WAREHOUSE_ROWS
+				: ecommerce_integration.GET_SHELF_ROWS;
 		rows_promise = frappe.xcall(method);
 	}
 
@@ -80,23 +87,33 @@ upande_webshop.render_shelf_move_buttons = function (opts) {
 	// items in _render_shelf_rows, so unrelated published items don't leak in.
 	Promise.all([
 		rows_promise.catch(() => []),
-		frappe.xcall(upande_webshop.GET_ENABLED_ROWS).catch(() => []),
-	]).then(([rows, enabled_rows]) => {
-		upande_webshop._render_shelf_rows(
-			$root,
-			frm,
-			channel,
-			fieldname,
-			rows || [],
-			source,
-			enabled_rows || []
-		);
-	}).catch(() => {
-		$root.html(`<p class="text-muted small">${__("Could not load stock.")}</p>`);
-	});
+		frappe.xcall(ecommerce_integration.GET_ENABLED_ROWS).catch(() => []),
+	])
+		.then(([rows, enabled_rows]) => {
+			ecommerce_integration._render_shelf_rows(
+				$root,
+				frm,
+				channel,
+				fieldname,
+				rows || [],
+				source,
+				enabled_rows || []
+			);
+		})
+		.catch(() => {
+			$root.html(`<p class="text-muted small">${__("Could not load stock.")}</p>`);
+		});
 };
 
-upande_webshop._render_shelf_rows = function ($root, frm, channel, fieldname, rows, source, enabled_rows) {
+ecommerce_integration._render_shelf_rows = function (
+	$root,
+	frm,
+	channel,
+	fieldname,
+	rows,
+	source,
+	enabled_rows
+) {
 	source = source || "shelf";
 	enabled_rows = enabled_rows || [];
 	$root.data("source", source);
@@ -235,7 +252,9 @@ upande_webshop._render_shelf_rows = function ($root, frm, channel, fieldname, ro
 			const raw_default = r.enabled ? Math.floor(Number(r.published_qty) || 0) : qty;
 			const default_qty = Math.min(snap_down(raw_default, step), max_qty);
 			const check_badge = r.enabled
-				? `<span class="indicator-pill green shelf-enabled-badge" title="${__("Published to webshop")}">✓</span>`
+				? `<span class="indicator-pill green shelf-enabled-badge" title="${__(
+						"Published to webshop"
+				  )}">✓</span>`
 				: "";
 			return `<tr data-idx="${i}" class="shelf-item-row${r.enabled ? " is-enabled" : ""}"
 					data-item-code="${frappe.utils.escape_html(r.item_code || "")}"
@@ -340,18 +359,18 @@ upande_webshop._render_shelf_rows = function ($root, frm, channel, fieldname, ro
 	});
 
 	$root.find(".shelf-enable-btn").on("click", () => {
-		upande_webshop._set_selected_enabled($root, frm, channel, fieldname, 1);
+		ecommerce_integration._set_selected_enabled($root, frm, channel, fieldname, 1);
 	});
 
 	$root.find(".shelf-disable-btn").on("click", () => {
-		upande_webshop._set_selected_enabled($root, frm, channel, fieldname, 0);
+		ecommerce_integration._set_selected_enabled($root, frm, channel, fieldname, 0);
 	});
 
 	// Filters: two searchable (typeahead) dropdowns — Item and Shelf. Built with
 	// frappe.ui.form.make_control Autocomplete so the user types to search right
 	// inside the dropdown. Blank value = "All". Filtering is client-side over the
 	// already-loaded rows; a shelf header hides when none of its items match.
-	const apply_filter = () => upande_webshop._apply_shelf_filter($root);
+	const apply_filter = () => ecommerce_integration._apply_shelf_filter($root);
 
 	$root.data("filter-item", "");
 	$root.data("filter-shelf", "");
@@ -391,7 +410,7 @@ upande_webshop._render_shelf_rows = function ($root, frm, channel, fieldname, ro
 	shelf_ctl.refresh();
 };
 
-upande_webshop._apply_shelf_filter = function ($root) {
+ecommerce_integration._apply_shelf_filter = function ($root) {
 	// Values come from the two Autocomplete filters. A selection sets the exact
 	// item_code / shelf; free-typed text is matched as a substring so partial
 	// queries also work.
@@ -419,7 +438,8 @@ upande_webshop._apply_shelf_filter = function ($root) {
 		const matchShelf =
 			!shelfVal ||
 			(agg.shelves || []).some(
-				(s) => s.shelf === shelfVal || String(s.shelf).toLowerCase().indexOf(shelfLc) !== -1
+				(s) =>
+					s.shelf === shelfVal || String(s.shelf).toLowerCase().indexOf(shelfLc) !== -1
 			);
 		const show = matchItem && matchShelf;
 
@@ -435,7 +455,7 @@ upande_webshop._apply_shelf_filter = function ($root) {
 // when enabling, writes its stock_qty to the "Qty to Enable" value. The row
 // stays in the panel afterwards (with / without the "On Webshop" checkmark) so
 // the published qty can be edited or the row toggled again.
-upande_webshop._set_selected_enabled = function ($root, frm, channel, fieldname, enable) {
+ecommerce_integration._set_selected_enabled = function ($root, frm, channel, fieldname, enable) {
 	const combined_rows = $root.data("combined-rows") || [];
 	const items = [];
 	$root.find("tr[data-idx]:visible").each(function () {
@@ -480,7 +500,7 @@ upande_webshop._set_selected_enabled = function ($root, frm, channel, fieldname,
 
 	const $btns = $root.find(".shelf-enable-btn, .shelf-disable-btn").prop("disabled", true);
 	frappe.call({
-		method: upande_webshop.SET_ENABLED_STOCK,
+		method: ecommerce_integration.SET_ENABLED_STOCK,
 		args: enable_args,
 		freeze: true,
 		freeze_message: enable
@@ -506,7 +526,7 @@ upande_webshop._set_selected_enabled = function ($root, frm, channel, fieldname,
 			// Reload so the checkmark + published qty reflect the new state. Carry the
 			// warehouse through so a customer-source panel reloads the same warehouse
 			// instead of blanking out.
-			upande_webshop.render_shelf_move_buttons({
+			ecommerce_integration.render_shelf_move_buttons({
 				frm,
 				channel,
 				fieldname,

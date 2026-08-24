@@ -1,7 +1,7 @@
 {
  "app": "ecommerce_integration",
  "charts": [],
- "content": "[{\"id\":\"eiIntegrations1\",\"type\":\"card\",\"data\":{\"card_name\":\"Integrations\",\"col\":4}}]",
+ "content": "[{\"id\":\"eiIntegrations1\",\"type\":\"card\",\"data\":{\"card_name\":\"Settings\",\"col\":4}},{\"id\":\"mFkrpjVc2V\",\"type\":\"card\",\"data\":{\"card_name\":\"Shopify\",\"col\":4}}]",
  "creation": "2025-11-20 20:43:34.240751",
  "custom_blocks": [],
  "docstatus": 0,
@@ -28,7 +28,66 @@
   {
    "hidden": 0,
    "is_query_report": 0,
-   "label": "Integrations",
+   "label": "Shopify",
+   "link_count": 5,
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Card Break"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Shopify Order Allocation",
+   "link_count": 0,
+   "link_to": "Shopify Allocation",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Shopify Orders",
+   "link_count": 0,
+   "link_to": "Shopify Order",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Shopify Subscriptions",
+   "link_count": 0,
+   "link_to": "Shopify Subscription",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Shopify Product Map",
+   "link_count": 0,
+   "link_to": "Shopify Product Map",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Shopify API Log",
+   "link_count": 0,
+   "link_to": "Shopify API Error Log",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Settings",
    "link_count": 3,
    "link_type": "DocType",
    "onboard": 0,
@@ -57,15 +116,15 @@
   {
    "hidden": 0,
    "is_query_report": 0,
-   "label": "Floriday Item Prices",
+   "label": "Shopify Settings",
    "link_count": 0,
-   "link_to": "Floriday Items",
+   "link_to": "Shopify Settings",
    "link_type": "DocType",
    "onboard": 0,
    "type": "Link"
   }
  ],
- "modified": "2026-07-17 13:36:21.993998",
+ "modified": "2026-08-24 10:48:31.544565",
  "modified_by": "Administrator",
  "module": "Ecommerce Integration",
  "name": "Ecommerce",

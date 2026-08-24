@@ -111,7 +111,10 @@ function run_doc_method(frm, button_field, method, label, format_result) {
 
 function format_sales_order_result(m) {
 	if (m.status === "error") {
-		return { message: __("Sync failed: {0}", [m.message || "unknown error"]), indicator: "red" };
+		return {
+			message: __("Sync failed: {0}", [m.message || "unknown error"]),
+			indicator: "red",
+		};
 	}
 	const s = m.summary || {};
 	const processed = s.processed || 0;
@@ -178,8 +181,12 @@ function format_order_fullfilment_result(m) {
 // every open so we don't actually need them persisted — keep the form clean.
 function _mark_form_clean(frm) {
 	frm.doc.__unsaved = 0;
-	(frm.doc.stock_items || []).forEach((r) => { r.__unsaved = 0; });
-	(frm.doc.table_wtkz || []).forEach((r) => { r.__unsaved = 0; });
+	(frm.doc.stock_items || []).forEach((r) => {
+		r.__unsaved = 0;
+	});
+	(frm.doc.table_wtkz || []).forEach((r) => {
+		r.__unsaved = 0;
+	});
 	if (typeof frm.refresh_header === "function") frm.refresh_header();
 	if (frm.toolbar && typeof frm.toolbar.refresh === "function") frm.toolbar.refresh();
 }
@@ -201,7 +208,9 @@ function load_system_stock_table(frm) {
 }
 
 function load_stock_table(frm, { silent } = {}) {
-	const stop_progress = silent ? () => {} : start_inline_progress(frm, "refresh_stock", "Loading stock");
+	const stop_progress = silent
+		? () => {}
+		: start_inline_progress(frm, "refresh_stock", "Loading stock");
 	frappe.call({
 		method: "ecommerce_integration.ecommerce_integration.doctype.floriday_settings.floriday_settings.get_floriday_stock",
 		args: {},
@@ -239,7 +248,7 @@ frappe.ui.form.on("Floriday Settings", {
 		check_custom_fields(frm, { silent: true });
 		// Shelf-mode batch picker.
 		load_shelf_stock_panel(frm);
-		upande_webshop.render_shelf_move_buttons({
+		ecommerce_integration.render_shelf_move_buttons({
 			frm,
 			channel: "Floriday",
 			fieldname: "shelf_stock_actions",
@@ -253,7 +262,7 @@ frappe.ui.form.on("Floriday Settings", {
 		if (frm.doc.use_shelf_stock) {
 			load_shelf_stock_panel(frm);
 		}
-		upande_webshop.render_shelf_move_buttons({
+		ecommerce_integration.render_shelf_move_buttons({
 			frm,
 			channel: "Floriday",
 			fieldname: "shelf_stock_actions",
@@ -283,14 +292,28 @@ frappe.ui.form.on("Floriday Settings", {
 	},
 
 	// Re-render the config-health reminder live as the user fills required fields.
-	customer(frm) { render_changelog(frm); },
-	company(frm) { render_changelog(frm); },
-	business_unit(frm) { render_changelog(frm); },
-	sales_order_type(frm) { render_changelog(frm); },
-	default_farm(frm) { render_changelog(frm); },
+	customer(frm) {
+		render_changelog(frm);
+	},
+	company(frm) {
+		render_changelog(frm);
+	},
+	business_unit(frm) {
+		render_changelog(frm);
+	},
+	sales_order_type(frm) {
+		render_changelog(frm);
+	},
+	default_farm(frm) {
+		render_changelog(frm);
+	},
 
 	fetch_warehouses(frm) {
-		const stop_progress = start_inline_progress(frm, "fetch_warehouses", "Fetching warehouses");
+		const stop_progress = start_inline_progress(
+			frm,
+			"fetch_warehouses",
+			"Fetching warehouses"
+		);
 		frm.call({
 			method: "fetch_warehouses",
 			doc: frm.doc,
@@ -298,10 +321,13 @@ frappe.ui.form.on("Floriday Settings", {
 				stop_progress();
 				const m = r.message || {};
 				if (m.status === "success") {
-					frappe.show_alert({
-						message: __("Loaded {0} warehouse(s)", [m.count || 0]),
-						indicator: (m.count || 0) ? "green" : "blue",
-					}, 7);
+					frappe.show_alert(
+						{
+							message: __("Loaded {0} warehouse(s)", [m.count || 0]),
+							indicator: m.count || 0 ? "green" : "blue",
+						},
+						7
+					);
 					frm.reload_doc();
 				}
 			},
@@ -312,7 +338,11 @@ frappe.ui.form.on("Floriday Settings", {
 	},
 
 	update_access_token(frm) {
-		const stop_progress = start_inline_progress(frm, "update_access_token", "Refreshing access token");
+		const stop_progress = start_inline_progress(
+			frm,
+			"update_access_token",
+			"Refreshing access token"
+		);
 		frm.call({
 			method: "update_access_token",
 			doc: frm.doc,
@@ -333,7 +363,13 @@ frappe.ui.form.on("Floriday Settings", {
 	},
 
 	sales_order(frm) {
-		run_doc_method(frm, "sales_order", "sales_order", "Sales Order Sync", format_sales_order_result);
+		run_doc_method(
+			frm,
+			"sales_order",
+			"sales_order",
+			"Sales Order Sync",
+			format_sales_order_result
+		);
 	},
 
 	create_batch(frm) {
@@ -347,13 +383,16 @@ frappe.ui.form.on("Floriday Settings", {
 				const rows = r.message || [];
 				if (!rows.length) {
 					stop_progress();
-					frappe.show_alert({
-						message: __(
-							"No enabled item has ≥{0} stems with a Floriday mapping. Enable items on the Stock tab first.",
-							[BATCH_MULTIPLE]
-						),
-						indicator: "orange",
-					}, 7);
+					frappe.show_alert(
+						{
+							message: __(
+								"No enabled item has ≥{0} stems with a Floriday mapping. Enable items on the Stock tab first.",
+								[BATCH_MULTIPLE]
+							),
+							indicator: "orange",
+						},
+						7
+					);
 					return;
 				}
 				frm.call({
@@ -362,7 +401,9 @@ frappe.ui.form.on("Floriday Settings", {
 					args: { selected_rows: JSON.stringify(rows) },
 					callback(res) {
 						stop_progress();
-						const { message, indicator } = format_create_batch_result(res.message ?? {});
+						const { message, indicator } = format_create_batch_result(
+							res.message ?? {}
+						);
 						frappe.show_alert({ message, indicator }, 7);
 					},
 					error() {
@@ -377,11 +418,23 @@ frappe.ui.form.on("Floriday Settings", {
 	},
 
 	create_supplyine(frm) {
-		run_doc_method(frm, "create_supplyine", "create_supplyine", "Create Supply Lines", format_supplyline_result);
+		run_doc_method(
+			frm,
+			"create_supplyine",
+			"create_supplyine",
+			"Create Supply Lines",
+			format_supplyline_result
+		);
 	},
 
 	order_fullfilment(frm) {
-		run_doc_method(frm, "order_fullfilment", "order_fullfilment", "Order Fullfilment", format_order_fullfilment_result);
+		run_doc_method(
+			frm,
+			"order_fullfilment",
+			"order_fullfilment",
+			"Order Fullfilment",
+			format_order_fullfilment_result
+		);
 	},
 
 	add_items(frm) {
@@ -394,10 +447,15 @@ frappe.ui.form.on("Floriday Settings", {
 				const m = r.message;
 				if (!m) return;
 				if (m.skipped) {
-					frappe.show_alert({ message: m.reason, indicator: "orange" });
+					frappe.show_alert({
+						message: m.reason || __("Sync skipped"),
+						indicator: "orange",
+					});
 					return;
 				}
-				const summary = `${m.floriday_docs_created || 0} created, ${m.price_refreshes || 0} prices refreshed${m.skipped ? `, ${m.skipped} errors` : ""}`;
+				const summary = `${m.floriday_docs_created || 0} created, ${
+					m.price_refreshes || 0
+				} prices refreshed${m.errors ? `, ${m.errors} errors` : ""}`;
 				frappe.show_alert({ message: summary, indicator: "green" }, 7);
 			},
 			error() {
@@ -416,12 +474,18 @@ frappe.ui.form.on("Floriday Settings", {
 				const m = r.message;
 				if (!m) return;
 				if (m.skipped) {
-					frappe.show_alert({ message: m.reason, indicator: "orange" });
+					frappe.show_alert({
+						message: m.reason || __("Sync skipped"),
+						indicator: "orange",
+					});
 					return;
 				}
 				if (m.error) {
 					frappe.show_alert(
-						{ message: __("Sync failed: {0}", [String(m.error).slice(0, 200)]), indicator: "red" },
+						{
+							message: __("Sync failed: {0}", [String(m.error).slice(0, 200)]),
+							indicator: "red",
+						},
 						10
 					);
 					return;
@@ -465,20 +529,36 @@ function render_custom_fields_panel(frm, rows) {
 	if (!wrapper || !wrapper.$wrapper) return;
 
 	if (!rows || !rows.length) {
-		wrapper.$wrapper.html(
-			`<p class="text-muted">${__("No fields to check.")}</p>`
-		);
+		wrapper.$wrapper.html(`<p class="text-muted">${__("No fields to check.")}</p>`);
 		return;
 	}
 
 	const present = rows.filter((r) => r.present).length;
-	const missing = rows.filter((r) => !r.present && !r.doctype_missing).length;
+	// A field whose Link target DocType is absent is not "missing" — it cannot be
+	// created here at all (the backend skips it), so it gets its own bucket.
+	const link_absent = rows.filter(
+		(r) => !r.present && !r.doctype_missing && r.link_target_missing
+	).length;
+	const missing = rows.filter(
+		(r) => !r.present && !r.doctype_missing && !r.link_target_missing
+	).length;
 	const dt_missing = rows.filter((r) => r.doctype_missing).length;
 
 	const head = `<div style="margin-bottom:8px;">
 		<span class="indicator-pill green">${__("Present")}: ${present}</span>
 		<span class="indicator-pill orange">${__("Missing")}: ${missing}</span>
-		${dt_missing ? `<span class="indicator-pill red">${__("DocType absent")}: ${dt_missing}</span>` : ""}
+		${
+			dt_missing
+				? `<span class="indicator-pill red">${__("DocType absent")}: ${dt_missing}</span>`
+				: ""
+		}
+		${
+			link_absent
+				? `<span class="indicator-pill gray">${__(
+						"Link target absent"
+				  )}: ${link_absent}</span>`
+				: ""
+		}
 	</div>`;
 
 	const body = rows
@@ -492,12 +572,19 @@ function render_custom_fields_panel(frm, rows) {
 				badge = __("Present");
 				color = "green";
 				disabled = "disabled";
+			} else if (r.link_target_missing) {
+				badge = __("Link target absent: {0}", [r.link_target_missing]);
+				color = "gray";
+				disabled = "disabled";
 			} else {
 				badge = r.optional ? __("Missing (optional)") : __("Missing");
 				color = "orange";
 				disabled = "";
 			}
-			const checked = !r.present && !r.doctype_missing && !r.optional ? "checked" : "";
+			const checked =
+				!r.present && !r.doctype_missing && !r.link_target_missing && !r.optional
+					? "checked"
+					: "";
 			return `<tr>
 				<td style="width:32px;text-align:center;">
 					<input type="checkbox" class="floriday-cf-check"
@@ -529,7 +616,7 @@ function check_custom_fields(frm, { silent } = {}) {
 			render_custom_fields_panel(frm, _floriday_field_status);
 			if (!silent) {
 				const missing = _floriday_field_status.filter(
-					(x) => !x.present && !x.doctype_missing
+					(x) => !x.present && !x.doctype_missing && !x.link_target_missing
 				).length;
 				frappe.show_alert(
 					{
@@ -620,7 +707,7 @@ const CHANGELOG = [
 		title: "Floriday Sales Order import is fully config-driven",
 		points: [
 			"Every imported Floriday order books under the <b>Customer</b> set on the Floriday Setting tab (no more per-organization or <i>Floriday-Default-Customer</i> creation). Fixes the <i>“[Customer …]: default_currency”</i> error that blocked all imports.",
-			"The Sales Order <b>Company</b> now comes from the configured Company field (e.g. Karen Roses) — never the stock-entry resolver, which could return Kaitet Group and fail the warehouse-company check.",
+			"The Sales Order <b>Company</b> now comes from the configured Company field — never the stock-entry resolver, which could return a parent/group company and fail the warehouse-company check.",
 			"Mandatory header fields are filled from settings: <b>Business Unit</b>, <b>Sales Order Type</b>, and a <b>Default Farm</b> fallback when the source transfer doesn't resolve one. Nothing is hardcoded — set these on the Floriday Setting tab.",
 		],
 	},
@@ -637,12 +724,42 @@ const CHANGELOG = [
 // Required Floriday config fields the Sales Order import + fulfillment depend on.
 // `tab` is the tab the field lives on, so the reminder tells the user where to go.
 const REQUIRED_CONFIG = [
-	{ field: "customer", label: "Customer", tab: "Floriday Setting", why: "every imported Sales Order books under this customer" },
-	{ field: "company", label: "Company", tab: "Floriday Setting", why: "Sales Order company; must own the Floriday warehouse" },
-	{ field: "business_unit", label: "Business Unit", tab: "Floriday Setting", why: "mandatory on the Sales Order" },
-	{ field: "sales_order_type", label: "Sales Order Type", tab: "Floriday Setting", why: "mandatory on the Sales Order" },
-	{ field: "default_farm", label: "Default Farm", tab: "Floriday Setting", why: "farm fallback when the source transfer doesn't resolve one" },
-	{ field: "warehouse", label: "Warehouse", tab: "Floriday Setting", why: "source warehouse for stock, batches and fulfillment" },
+	{
+		field: "customer",
+		label: "Customer",
+		tab: "Floriday Setting",
+		why: "every imported Sales Order books under this customer",
+	},
+	{
+		field: "company",
+		label: "Company",
+		tab: "Floriday Setting",
+		why: "Sales Order company; must own the Floriday warehouse",
+	},
+	{
+		field: "business_unit",
+		label: "Business Unit",
+		tab: "Floriday Setting",
+		why: "mandatory on the Sales Order",
+	},
+	{
+		field: "sales_order_type",
+		label: "Sales Order Type",
+		tab: "Floriday Setting",
+		why: "mandatory on the Sales Order",
+	},
+	{
+		field: "default_farm",
+		label: "Default Farm",
+		tab: "Floriday Setting",
+		why: "farm fallback when the source transfer doesn't resolve one",
+	},
+	{
+		field: "warehouse",
+		label: "Warehouse",
+		tab: "Floriday Setting",
+		why: "source warehouse for stock, batches and fulfillment",
+	},
 ];
 
 function render_config_health(frm) {
@@ -654,18 +771,26 @@ function render_config_health(frm) {
 	if (!missing.length) {
 		return `<div style="margin-bottom:16px;padding:10px 12px;border:1px solid var(--green-300, #4caf50);
 				border-radius:6px;background:var(--green-50, rgba(76,175,80,0.08));">
-			<span style="color:var(--green-600, #2e7d32);font-weight:600;">✓ ${__("Floriday configuration complete")}</span>
-			<span style="color:var(--text-muted);font-size:var(--text-sm);"> — ${__("all required fields are set.")}</span>
+			<span style="color:var(--green-600, #2e7d32);font-weight:600;">✓ ${__(
+				"Floriday configuration complete"
+			)}</span>
+			<span style="color:var(--text-muted);font-size:var(--text-sm);"> — ${__(
+				"all required fields are set."
+			)}</span>
 		</div>`;
 	}
 
-	const rows = missing.map((c) => `<li style="margin-bottom:6px;">
+	const rows = missing
+		.map(
+			(c) => `<li style="margin-bottom:6px;">
 			<b>${frappe.utils.escape_html(c.label)}</b>
 			<span style="color:var(--text-muted);"> — ${frappe.utils.escape_html(c.why)}.</span><br>
 			<span style="font-size:var(--text-sm);color:var(--text-muted);">
 				${__("Set it on the")} <b>${frappe.utils.escape_html(c.tab)}</b> ${__("tab.")}
 			</span>
-		</li>`).join("");
+		</li>`
+		)
+		.join("");
 
 	return `<div style="margin-bottom:16px;padding:12px 14px;border:1px solid var(--orange-300, #ffb74d);
 			border-radius:6px;background:var(--orange-50, rgba(255,152,0,0.08));max-width:760px;">
@@ -691,7 +816,9 @@ function render_changelog(frm) {
 			.join("");
 		return `<div style="margin-bottom:14px;padding-bottom:10px;border-bottom:1px solid var(--border-color);">
 			<div style="font-weight:600;">${frappe.utils.escape_html(e.title)}
-				<span style="color:var(--text-muted);font-weight:400;font-size:var(--text-sm);">— ${frappe.utils.escape_html(e.date)}</span>
+				<span style="color:var(--text-muted);font-weight:400;font-size:var(--text-sm);">— ${frappe.utils.escape_html(
+					e.date
+				)}</span>
 			</div>
 			<ul style="margin:6px 0 0 0;padding-left:18px;font-size:var(--text-sm);color:var(--text-muted);">${points}</ul>
 		</div>`;
@@ -715,40 +842,42 @@ function create_missing_custom_fields(frm) {
 		return;
 	}
 
-	frappe.confirm(
-		__("Create {0} custom field(s) on this site?", [ids.length]),
-		() => {
-			frappe.call({
-				method: `${CUSTOM_FIELDS_API}.create_missing_floriday_custom_fields`,
-				args: { field_ids: JSON.stringify(ids) },
-				freeze: true,
-				freeze_message: __("Creating custom fields…"),
-				callback(r) {
-					const m = (r.message && r.message.summary) || {};
-					frappe.show_alert(
-						{
-							message: __("Created {0}, skipped {1}, errors {2}", [
-								m.created || 0,
-								m.skipped || 0,
-								m.errors || 0,
-							]),
-							indicator: m.errors ? "red" : "green",
-						},
-						8
-					);
-					if (r.message && r.message.errors && r.message.errors.length) {
-						frappe.msgprint({
-							title: __("Field creation errors"),
-							message: r.message.errors
-								.map((e) => `<code>${frappe.utils.escape_html(e.id)}</code>: ${frappe.utils.escape_html(e.error)}`)
-								.join("<br>"),
-							indicator: "red",
-						});
-					}
-					// Re-run the check so the panel reflects the new state.
-					check_custom_fields(frm, { silent: true });
-				},
-			});
-		}
-	);
+	frappe.confirm(__("Create {0} custom field(s) on this site?", [ids.length]), () => {
+		frappe.call({
+			method: `${CUSTOM_FIELDS_API}.create_missing_floriday_custom_fields`,
+			args: { field_ids: JSON.stringify(ids) },
+			freeze: true,
+			freeze_message: __("Creating custom fields…"),
+			callback(r) {
+				const m = (r.message && r.message.summary) || {};
+				frappe.show_alert(
+					{
+						message: __("Created {0}, skipped {1}, errors {2}", [
+							m.created || 0,
+							m.skipped || 0,
+							m.errors || 0,
+						]),
+						indicator: m.errors ? "red" : "green",
+					},
+					8
+				);
+				if (r.message && r.message.errors && r.message.errors.length) {
+					frappe.msgprint({
+						title: __("Field creation errors"),
+						message: r.message.errors
+							.map(
+								(e) =>
+									`<code>${frappe.utils.escape_html(
+										e.id
+									)}</code>: ${frappe.utils.escape_html(e.error)}`
+							)
+							.join("<br>"),
+						indicator: "red",
+					});
+				}
+				// Re-run the check so the panel reflects the new state.
+				check_custom_fields(frm, { silent: true });
+			},
+		});
+	});
 }

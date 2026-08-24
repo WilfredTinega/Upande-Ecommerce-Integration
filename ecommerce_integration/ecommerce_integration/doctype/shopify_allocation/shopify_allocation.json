@@ -1,0 +1,292 @@
+{
+ "actions": [],
+ "autoname": "format:SHOP-ALL-{shopify_order}-{delivery_index}",
+ "creation": "2026-07-30 08:30:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "order_section",
+  "shopify_order",
+  "shopify_subscription",
+  "delivery_index",
+  "deliveries_total",
+  "required_stems",
+  "customer",
+  "column_break_order",
+  "delivery_date",
+  "status",
+  "delivery_section",
+  "customer_address",
+  "recipient_name",
+  "recipient_phone",
+  "column_break_delivery",
+  "shipping_address",
+  "shipping_city",
+  "items_section",
+  "items",
+  "warehouse_section",
+  "source_warehouse",
+  "column_break_wh",
+  "reserve_warehouse",
+  "totals_section",
+  "total_qty",
+  "column_break_totals",
+  "stock_entry",
+  "amended_from"
+ ],
+ "fields": [
+  {
+   "fieldname": "order_section",
+   "fieldtype": "Section Break",
+   "label": "Order"
+  },
+  {
+   "fieldname": "shopify_order",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Shopify Order",
+   "options": "Shopify Order",
+   "reqd": 1,
+   "description": "A multi-delivery order raises one allocation per delivery."
+  },
+  {
+   "fetch_from": "shopify_order.shopify_subscription",
+   "fieldname": "shopify_subscription",
+   "fieldtype": "Link",
+   "in_standard_filter": 1,
+   "label": "Shopify Subscription",
+   "options": "Shopify Subscription",
+   "read_only": 1
+  },
+  {
+   "fetch_from": "shopify_order.customer",
+   "fieldname": "customer",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Customer",
+   "options": "Customer",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_order",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fetch_from": "shopify_order.requested_delivery_date",
+   "fetch_if_empty": 1,
+   "fieldname": "delivery_date",
+   "fieldtype": "Date",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Delivery Date",
+   "reqd": 1
+  },
+  {
+   "default": "Draft",
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Status",
+   "no_copy": 1,
+   "options": "Draft\nAllocated\nPacked\nShipped\nCancelled"
+  },
+  {
+   "description": "What available stock fills this order. Chosen by the sales team.",
+   "fieldname": "items_section",
+   "fieldtype": "Section Break",
+   "label": "Allocation"
+  },
+  {
+   "fieldname": "items",
+   "fieldtype": "Table",
+   "label": "Items",
+   "options": "Shopify Allocation Item"
+  },
+  {
+   "fieldname": "warehouse_section",
+   "fieldtype": "Section Break",
+   "label": "Warehouses"
+  },
+  {
+   "description": "Where the allocated stock is drawn from.",
+   "fieldname": "source_warehouse",
+   "fieldtype": "Link",
+   "label": "Source Warehouse",
+   "options": "Warehouse",
+   "reqd": 1
+  },
+  {
+   "fieldname": "column_break_wh",
+   "fieldtype": "Column Break"
+  },
+  {
+   "description": "On submit, allocated stock transfers here so it cannot be promised twice.",
+   "fieldname": "reserve_warehouse",
+   "fieldtype": "Link",
+   "label": "Reserve Warehouse",
+   "options": "Warehouse",
+   "reqd": 1
+  },
+  {
+   "fieldname": "totals_section",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "total_qty",
+   "fieldtype": "Float",
+   "label": "Total Allocated Qty",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_totals",
+   "fieldtype": "Column Break"
+  },
+  {
+   "description": "Material Transfer created on submit and cancelled when this allocation is cancelled.",
+   "fieldname": "stock_entry",
+   "fieldtype": "Link",
+   "label": "Reservation Stock Entry",
+   "no_copy": 1,
+   "options": "Stock Entry",
+   "read_only": 1
+  },
+  {
+   "fieldname": "amended_from",
+   "fieldtype": "Link",
+   "label": "Amended From",
+   "no_copy": 1,
+   "options": "Shopify Allocation",
+   "print_hide": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "delivery_index",
+   "fieldtype": "Int",
+   "label": "Delivery No",
+   "reqd": 1,
+   "default": "1",
+   "in_list_view": 1,
+   "read_only": 1,
+   "description": "Which delivery of the subscription this is, e.g. 2 of 3."
+  },
+  {
+   "fieldname": "deliveries_total",
+   "fieldtype": "Int",
+   "label": "Of Total",
+   "read_only": 1
+  },
+  {
+   "fieldname": "required_stems",
+   "fieldtype": "Float",
+   "label": "Stems Required",
+   "read_only": 1,
+   "description": "Stems the ordered boxes call for, resolved through the product map. The target for this allocation."
+  },
+  {
+   "description": "The subscriber's own delivery details, so the packing team does not have to open the order.",
+   "fieldname": "delivery_section",
+   "fieldtype": "Section Break",
+   "label": "Deliver To"
+  },
+  {
+   "fetch_from": "shopify_order.recipient_name",
+   "fieldname": "recipient_name",
+   "fieldtype": "Data",
+   "label": "Recipient Name",
+   "read_only": 1
+  },
+  {
+   "fetch_from": "shopify_order.recipient_phone",
+   "fieldname": "recipient_phone",
+   "fieldtype": "Data",
+   "label": "Recipient Phone",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_delivery",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fetch_from": "shopify_order.shipping_address",
+   "fieldname": "shipping_address",
+   "fieldtype": "Small Text",
+   "label": "Shipping Address",
+   "read_only": 1
+  },
+  {
+   "fetch_from": "shopify_order.shipping_city",
+   "fieldname": "shipping_city",
+   "fieldtype": "Data",
+   "label": "City",
+   "read_only": 1
+  },
+  {
+   "fetch_from": "shopify_order.customer_address",
+   "fieldname": "customer_address",
+   "fieldtype": "Link",
+   "label": "Subscriber Address",
+   "options": "Address",
+   "read_only": 1
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "is_submittable": 1,
+ "links": [],
+ "modified": "2026-07-30 08:30:00.000000",
+ "modified_by": "Administrator",
+ "module": "Ecommerce Integration",
+ "name": "Shopify Allocation",
+ "naming_rule": "Expression",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "amend": 1,
+   "cancel": 1,
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "submit": 1,
+   "write": 1
+  },
+  {
+   "amend": 1,
+   "cancel": 1,
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Sales Manager",
+   "share": 1,
+   "submit": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Sales User",
+   "submit": 1,
+   "write": 1
+  }
+ ],
+ "row_format": "Dynamic",
+ "sort_field": "delivery_date",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
+}

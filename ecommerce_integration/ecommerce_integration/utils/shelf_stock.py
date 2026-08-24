@@ -5,8 +5,8 @@
 
 Shelf rows model plain items: `Shelf Item.variety` is the Item code,
 `stem_length` is the Stem Length name (e.g. "52cm"), `stem_qty` is the count.
-The `Shelf`/`Shelf Item` doctypes are owned by upande_kaitet; every read here is
-guarded on their existence so this app is safe on sites without that app.
+The `Shelf`/`Shelf Item` doctypes are owned by a separate app; every read here is
+guarded on their existence so this app is safe on sites without them.
 
 Vendored into ecommerce_integration so the integration carries no import
 dependency on upande_webshop.
@@ -19,7 +19,7 @@ from frappe.utils import flt
 def shelf_stock_enabled(settings_doctype):
 	"""True when `settings_doctype` (a Single) has use_shelf_stock on and Shelf exists.
 
-	Guarded by the `Shelf Item` doctype so sites without upande_kaitet are safe.
+	Guarded by the `Shelf Item` doctype so sites without shelf support are safe.
 	"""
 	try:
 		if not frappe.get_cached_value(settings_doctype, settings_doctype, "use_shelf_stock"):

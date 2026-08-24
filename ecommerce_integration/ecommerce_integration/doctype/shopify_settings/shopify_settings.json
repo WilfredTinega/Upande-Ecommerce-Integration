@@ -1,0 +1,798 @@
+{
+ "actions": [],
+ "creation": "2026-07-30 08:30:00",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "subscription_tab",
+  "sync_section",
+  "sub_enabled",
+  "sub_event_frequency",
+  "sub_cron_format",
+  "sync_now",
+  "column_break_sync",
+  "last_sync_updated_at",
+  "sub_last_run",
+  "sub_next_run",
+  "column_break_mics",
+  "last_sync_summary",
+  "exp_section",
+  "exp_enabled",
+  "exp_event_frequency",
+  "exp_cron_format",
+  "expire_now",
+  "column_break_exp",
+  "exp_last_run",
+  "exp_next_run",
+  "column_break_fdhz",
+  "last_expiry_summary",
+  "order_sync_tab",
+  "attr_section",
+  "attr_duration",
+  "attr_plan",
+  "attr_frequency",
+  "attr_start_date",
+  "column_break_attr",
+  "attr_note",
+  "attr_special_requests",
+  "attr_recipient_name",
+  "column_break_hpom",
+  "default_frequency",
+  "attr_recipient_phone",
+  "order_section",
+  "ord_enabled",
+  "ord_event_frequency",
+  "ord_cron_format",
+  "order_lookback_days",
+  "paid_orders_only",
+  "sync_orders_now",
+  "column_break_order",
+  "ord_last_run",
+  "ord_next_run",
+  "last_order_updated_at",
+  "column_break_fogr",
+  "last_order_sync_summary",
+  "allocation_tab",
+  "allocation_section",
+  "alloc_enabled",
+  "allocation_horizon_weeks",
+  "allocate_paid_only",
+  "alloc_event_frequency",
+  "alloc_cron_format",
+  "generate_allocations",
+  "column_break_alloc",
+  "default_source_warehouse",
+  "default_reserve_warehouse",
+  "alloc_last_run",
+  "alloc_next_run",
+  "column_break_nrgd",
+  "last_allocation_summary",
+  "default_settings_tab",
+  "defaults_section",
+  "default_company",
+  "default_customer",
+  "create_missing_customer",
+  "column_break_defaults",
+  "default_customer_group",
+  "default_territory",
+  "default_price_list",
+  "map_section",
+  "seed_product_map",
+  "map_summary",
+  "settings_and_connection_tab",
+  "oauth_section",
+  "client_id",
+  "client_secret",
+  "access_token",
+  "column_break_oauth",
+  "token_expires_on",
+  "oauth_status",
+  "open_shopify_app",
+  "column_break_suvc",
+  "refresh_token_now",
+  "granted_scopes",
+  "column_break_cjud",
+  "requested_scopes",
+  "tok_section",
+  "tok_enabled",
+  "column_break_zlkh",
+  "tok_event_frequency",
+  "column_break_wmgb",
+  "tok_cron_format",
+  "column_break_avfx",
+  "token_refresh_buffer_minutes",
+  "column_break_tok",
+  "tok_last_run",
+  "column_break_ohzw",
+  "tok_next_run",
+  "run_section",
+  "run_full_sync",
+  "column_break_run",
+  "last_full_run",
+  "connection_section",
+  "enabled",
+  "shop_domain",
+  "api_version",
+  "column_break_conn",
+  "connection_status",
+  "test_connection",
+  "log_section",
+  "log_api_calls",
+  "log_successful_calls",
+  "column_break_log",
+  "api_log_retention_days",
+  "view_api_log"
+ ],
+ "fields": [
+  {
+   "fieldname": "connection_section",
+   "fieldtype": "Section Break",
+   "label": "Connection"
+  },
+  {
+   "default": "0",
+   "fieldname": "enabled",
+   "fieldtype": "Check",
+   "label": "Enabled"
+  },
+  {
+   "description": "e.g. upande.myshopify.com",
+   "fieldname": "shop_domain",
+   "fieldtype": "Data",
+   "label": "Shop Domain"
+  },
+  {
+   "default": "2026-07",
+   "fieldname": "api_version",
+   "fieldtype": "Data",
+   "label": "Admin API Version"
+  },
+  {
+   "fieldname": "column_break_conn",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "access_token",
+   "fieldtype": "Password",
+   "label": "Admin API Access Token"
+  },
+  {
+   "fieldname": "test_connection",
+   "fieldtype": "Button",
+   "label": "Test Connection"
+  },
+  {
+   "fieldname": "connection_status",
+   "fieldtype": "Data",
+   "label": "Connection Status",
+   "read_only": 1
+  },
+  {
+   "fieldname": "sync_section",
+   "fieldtype": "Section Break",
+   "label": "Subscription Contract Sync"
+  },
+  {
+   "default": "0",
+   "description": "Derives subscriptions from stored orders. This store sells no Shopify selling plans, so `subscriptionContracts` holds nothing to read; orders are the only place its subscriptions exist.",
+   "fieldname": "sub_enabled",
+   "fieldtype": "Check",
+   "label": "Enabled"
+  },
+  {
+   "default": "Hourly",
+   "fieldname": "sub_event_frequency",
+   "fieldtype": "Select",
+   "label": "Event Frequency",
+   "options": "\nAll\nHourly\nHourly Long\nDaily\nDaily Long\nWeekly\nCron"
+  },
+  {
+   "depends_on": "eval:doc.sub_event_frequency=='Cron'",
+   "fieldname": "sub_cron_format",
+   "fieldtype": "Data",
+   "label": "Cron Format"
+  },
+  {
+   "description": "Re-reads the Shopify Orders already stored and upserts a subscription for each one that is a prepaid run or an open-ended plan. No Shopify call \u2014 the orders are already here.",
+   "fieldname": "sync_now",
+   "fieldtype": "Button",
+   "label": "Derive Subscriptions Now"
+  },
+  {
+   "fieldname": "column_break_sync",
+   "fieldtype": "Column Break"
+  },
+  {
+   "description": "Only used by the dormant `subscriptionContracts` path. The order-derived rebuild reads stored orders, so it has no watermark of its own.",
+   "fieldname": "last_sync_updated_at",
+   "fieldtype": "Datetime",
+   "label": "Sync Watermark"
+  },
+  {
+   "fieldname": "sub_last_run",
+   "fieldtype": "Datetime",
+   "label": "Last Run",
+   "read_only": 1
+  },
+  {
+   "fieldname": "sub_next_run",
+   "fieldtype": "Datetime",
+   "label": "Next Run",
+   "read_only": 1
+  },
+  {
+   "fieldname": "last_sync_summary",
+   "fieldtype": "Small Text",
+   "label": "Last Sync Summary",
+   "read_only": 1
+  },
+  {
+   "fieldname": "order_section",
+   "fieldtype": "Section Break",
+   "label": "Order Sync"
+  },
+  {
+   "default": "0",
+   "fieldname": "ord_enabled",
+   "fieldtype": "Check",
+   "label": "Enabled"
+  },
+  {
+   "default": "Hourly",
+   "fieldname": "ord_event_frequency",
+   "fieldtype": "Select",
+   "label": "Event Frequency",
+   "options": "\nAll\nHourly\nHourly Long\nDaily\nDaily Long\nWeekly\nCron"
+  },
+  {
+   "depends_on": "eval:doc.ord_event_frequency=='Cron'",
+   "fieldname": "ord_cron_format",
+   "fieldtype": "Data",
+   "label": "Cron Format"
+  },
+  {
+   "default": "30",
+   "fieldname": "order_lookback_days",
+   "fieldtype": "Int",
+   "label": "Lookback Days"
+  },
+  {
+   "fieldname": "sync_orders_now",
+   "fieldtype": "Button",
+   "label": "Sync Orders Now"
+  },
+  {
+   "fieldname": "column_break_order",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "ord_last_run",
+   "fieldtype": "Datetime",
+   "label": "Last Run",
+   "read_only": 1
+  },
+  {
+   "fieldname": "ord_next_run",
+   "fieldtype": "Datetime",
+   "label": "Next Run",
+   "read_only": 1
+  },
+  {
+   "fieldname": "last_order_sync_summary",
+   "fieldtype": "Small Text",
+   "label": "Last Order Sync Summary",
+   "read_only": 1
+  },
+  {
+   "fieldname": "allocation_section",
+   "fieldtype": "Section Break",
+   "label": "Allocation"
+  },
+  {
+   "default": "0",
+   "fieldname": "alloc_enabled",
+   "fieldtype": "Check",
+   "label": "Generate Allocations"
+  },
+  {
+   "default": "Daily",
+   "fieldname": "alloc_event_frequency",
+   "fieldtype": "Select",
+   "label": "Event Frequency",
+   "options": "\nAll\nHourly\nDaily\nWeekly\nCron"
+  },
+  {
+   "depends_on": "eval:doc.alloc_event_frequency=='Cron'",
+   "fieldname": "alloc_cron_format",
+   "fieldtype": "Data",
+   "label": "Cron Format"
+  },
+  {
+   "fieldname": "generate_allocations",
+   "fieldtype": "Button",
+   "label": "Generate Allocations Now"
+  },
+  {
+   "fieldname": "column_break_alloc",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "default_source_warehouse",
+   "fieldtype": "Link",
+   "label": "Default Source Warehouse",
+   "options": "Warehouse"
+  },
+  {
+   "fieldname": "default_reserve_warehouse",
+   "fieldtype": "Link",
+   "label": "Default Reserve Warehouse",
+   "options": "Warehouse"
+  },
+  {
+   "fieldname": "alloc_last_run",
+   "fieldtype": "Datetime",
+   "label": "Last Run",
+   "read_only": 1
+  },
+  {
+   "fieldname": "alloc_next_run",
+   "fieldtype": "Datetime",
+   "label": "Next Run",
+   "read_only": 1
+  },
+  {
+   "fieldname": "last_allocation_summary",
+   "fieldtype": "Small Text",
+   "label": "Last Allocation Run",
+   "read_only": 1
+  },
+  {
+   "fieldname": "defaults_section",
+   "fieldtype": "Section Break",
+   "label": "Defaults"
+  },
+  {
+   "fieldname": "default_company",
+   "fieldtype": "Link",
+   "label": "Company",
+   "options": "Company"
+  },
+  {
+   "description": "The single ERPNext Customer every order is booked to. Subscribers are not customers in their own right: each one becomes a Shipping Address and a Contact attached to this customer, so one account carries the books while deliveries still carry the subscriber's own name, phone and address. Leave blank to fall back to matching or creating a Customer per subscriber instead.",
+   "fieldname": "default_customer",
+   "fieldtype": "Link",
+   "label": "Customer",
+   "options": "Customer"
+  },
+  {
+   "default": "0",
+   "fieldname": "create_missing_customer",
+   "fieldtype": "Check",
+   "label": "Create Missing Customers"
+  },
+  {
+   "fieldname": "column_break_defaults",
+   "fieldtype": "Column Break"
+  },
+  {
+   "depends_on": "create_missing_customer",
+   "fieldname": "default_customer_group",
+   "fieldtype": "Link",
+   "label": "Customer Group",
+   "options": "Customer Group"
+  },
+  {
+   "depends_on": "create_missing_customer",
+   "fieldname": "default_territory",
+   "fieldtype": "Link",
+   "label": "Territory",
+   "options": "Territory"
+  },
+  {
+   "fieldname": "default_price_list",
+   "fieldtype": "Link",
+   "label": "Price List",
+   "options": "Price List"
+  },
+  {
+   "fieldname": "map_section",
+   "fieldtype": "Section Break",
+   "label": "Product Map"
+  },
+  {
+   "fieldname": "seed_product_map",
+   "fieldtype": "Button",
+   "label": "Seed / Refresh Product Map"
+  },
+  {
+   "fieldname": "map_summary",
+   "fieldtype": "Small Text",
+   "label": "Product Map Summary",
+   "read_only": 1
+  },
+  {
+   "fieldname": "attr_section",
+   "fieldtype": "Section Break",
+   "label": "Order Attribute Mapping"
+  },
+  {
+   "fieldname": "attr_duration",
+   "fieldtype": "Data",
+   "label": "Duration Attribute"
+  },
+  {
+   "fieldname": "attr_frequency",
+   "fieldtype": "Data",
+   "label": "Frequency Attribute"
+  },
+  {
+   "fieldname": "attr_start_date",
+   "fieldtype": "Data",
+   "label": "Start / First Delivery Date Attribute"
+  },
+  {
+   "fieldname": "column_break_attr",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "attr_note",
+   "fieldtype": "Data",
+   "label": "Handwritten Note Attribute"
+  },
+  {
+   "fieldname": "attr_special_requests",
+   "fieldtype": "Data",
+   "label": "Special Requests Attribute"
+  },
+  {
+   "fieldname": "attr_recipient_name",
+   "fieldtype": "Data",
+   "label": "Recipient Name Attribute"
+  },
+  {
+   "fieldname": "attr_recipient_phone",
+   "fieldtype": "Data",
+   "label": "Recipient Phone Attribute"
+  },
+  {
+   "default": "Monthly",
+   "fieldname": "default_frequency",
+   "fieldtype": "Select",
+   "label": "Default Frequency",
+   "options": "\nWeekly\nFortnightly\nMonthly"
+  },
+  {
+   "fieldname": "exp_section",
+   "fieldtype": "Section Break",
+   "label": "Subscription Expiry"
+  },
+  {
+   "default": "0",
+   "fieldname": "exp_enabled",
+   "fieldtype": "Check",
+   "label": "Enabled"
+  },
+  {
+   "default": "Daily",
+   "fieldname": "exp_event_frequency",
+   "fieldtype": "Select",
+   "label": "Event Frequency",
+   "options": "\nAll\nHourly\nDaily\nWeekly\nCron"
+  },
+  {
+   "depends_on": "eval:doc.exp_event_frequency=='Cron'",
+   "fieldname": "exp_cron_format",
+   "fieldtype": "Data",
+   "label": "Cron Format"
+  },
+  {
+   "fieldname": "expire_now",
+   "fieldtype": "Button",
+   "label": "Run Expiry Now"
+  },
+  {
+   "fieldname": "column_break_exp",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "exp_last_run",
+   "fieldtype": "Datetime",
+   "label": "Last Run",
+   "read_only": 1
+  },
+  {
+   "fieldname": "exp_next_run",
+   "fieldtype": "Datetime",
+   "label": "Next Run",
+   "read_only": 1
+  },
+  {
+   "fieldname": "last_expiry_summary",
+   "fieldtype": "Small Text",
+   "label": "Last Expiry Run",
+   "read_only": 1
+  },
+  {
+   "fieldname": "last_order_updated_at",
+   "fieldtype": "Datetime",
+   "label": "Order Sync Watermark"
+  },
+  {
+   "fieldname": "subscription_tab",
+   "fieldtype": "Tab Break",
+   "label": "Subscriptions"
+  },
+  {
+   "fieldname": "settings_and_connection_tab",
+   "fieldtype": "Tab Break",
+   "label": "Connection"
+  },
+  {
+   "fieldname": "order_sync_tab",
+   "fieldtype": "Tab Break",
+   "label": "Order Sync"
+  },
+  {
+   "fieldname": "allocation_tab",
+   "fieldtype": "Tab Break",
+   "label": "Allocation"
+  },
+  {
+   "fieldname": "default_settings_tab",
+   "fieldtype": "Tab Break",
+   "label": "Default Settings"
+  },
+  {
+   "fieldname": "column_break_mics",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "column_break_fdhz",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "column_break_nrgd",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "column_break_hpom",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "column_break_fogr",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "oauth_section",
+   "fieldtype": "Section Break",
+   "label": "App Credentials"
+  },
+  {
+   "fieldname": "client_id",
+   "fieldtype": "Data",
+   "label": "Client ID"
+  },
+  {
+   "fieldname": "client_secret",
+   "fieldtype": "Password",
+   "label": "Client Secret"
+  },
+  {
+   "fieldname": "column_break_oauth",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "oauth_status",
+   "fieldtype": "Data",
+   "label": "OAuth Status",
+   "read_only": 1
+  },
+  {
+   "fieldname": "token_expires_on",
+   "fieldtype": "Datetime",
+   "label": "Token Expires On",
+   "read_only": 1
+  },
+  {
+   "fieldname": "refresh_token_now",
+   "fieldtype": "Button",
+   "label": "Refresh Access Token"
+  },
+  {
+   "fieldname": "granted_scopes",
+   "fieldtype": "Small Text",
+   "in_list_view": 1,
+   "label": "Granted Scopes",
+   "read_only": 1
+  },
+  {
+   "default": "1",
+   "fieldname": "tok_enabled",
+   "fieldtype": "Check",
+   "label": "Auto-Refresh Token"
+  },
+  {
+   "default": "Hourly",
+   "fieldname": "tok_event_frequency",
+   "fieldtype": "Select",
+   "label": "Refresh Check Frequency",
+   "options": "\nAll\nHourly\nDaily\nCron"
+  },
+  {
+   "depends_on": "eval:doc.tok_event_frequency=='Cron'",
+   "fieldname": "tok_cron_format",
+   "fieldtype": "Data",
+   "label": "Cron Format"
+  },
+  {
+   "default": "120",
+   "fieldname": "token_refresh_buffer_minutes",
+   "fieldtype": "Int",
+   "label": "Refresh Buffer (Minutes)"
+  },
+  {
+   "fieldname": "tok_last_run",
+   "fieldtype": "Datetime",
+   "label": "Last Refresh Check",
+   "read_only": 1
+  },
+  {
+   "fieldname": "tok_next_run",
+   "fieldtype": "Datetime",
+   "label": "Next Refresh Check",
+   "read_only": 1
+  },
+  {
+   "fieldname": "run_section",
+   "fieldtype": "Section Break",
+   "label": "Run"
+  },
+  {
+   "fieldname": "run_full_sync",
+   "fieldtype": "Button",
+   "label": "Run Full Sync"
+  },
+  {
+   "fieldname": "column_break_run",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "last_full_run",
+   "fieldtype": "Small Text",
+   "label": "Last Full Run",
+   "read_only": 1
+  },
+  {
+   "fieldname": "tok_section",
+   "fieldtype": "Section Break",
+   "label": "Token Auto-Refresh"
+  },
+  {
+   "fieldname": "column_break_tok",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "column_break_zlkh",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "column_break_wmgb",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "column_break_avfx",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "column_break_ohzw",
+   "fieldtype": "Column Break"
+  },
+  {
+   "description": "Every call to Shopify is recorded in Shopify API Error Log \u2014 successes as well as failures \u2014 so there is one place to see what the integration actually sent and received.",
+   "fieldname": "log_section",
+   "fieldtype": "Section Break",
+   "label": "API Logging"
+  },
+  {
+   "default": "1",
+   "fieldname": "log_api_calls",
+   "fieldtype": "Check",
+   "label": "Log API Calls"
+  },
+  {
+   "default": "1",
+   "depends_on": "log_api_calls",
+   "description": "Turn off to keep only failures once the integration is running steadily.",
+   "fieldname": "log_successful_calls",
+   "fieldtype": "Check",
+   "label": "Log Successful Calls Too"
+  },
+  {
+   "fieldname": "column_break_log",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "30",
+   "description": "Entries older than this are cleared by Frappe's daily log cleanup.",
+   "fieldname": "api_log_retention_days",
+   "fieldtype": "Int",
+   "label": "Keep Logs For (Days)"
+  },
+  {
+   "fieldname": "view_api_log",
+   "fieldtype": "Button",
+   "label": "View API Log"
+  },
+  {
+   "fieldname": "column_break_suvc",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "requested_scopes",
+   "fieldtype": "Small Text",
+   "label": "Requested Scopes",
+   "read_only": 1
+  },
+  {
+   "fieldname": "open_shopify_app",
+   "fieldtype": "Button",
+   "label": "Open App Settings in Shopify"
+  },
+  {
+   "fieldname": "column_break_cjud",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "1",
+   "description": "Only pull orders Shopify reports as PAID, filtered server-side so unpaid ones never spend page budget. An order that is paid later has its updated_at bumped, so the next incremental run picks it up on its own. Note this matches PAID exactly: a refund moves an order to REFUNDED or PARTIALLY_REFUNDED and it stops being returned, though a copy already stored is kept.",
+   "fieldname": "paid_orders_only",
+   "fieldtype": "Check",
+   "label": "Paid Orders Only"
+  },
+  {
+   "description": "The attribute naming what was sold \u2014 observed values on this store are Subscription, Ongoing, Pay upfront, \"Gift, N boxes over N months\", One time purchase. It is the only thing separating an open-ended subscription from a prepaid run: a Seal \"Subscription\" order carries no delivery count, so counting attributes alone reads it as a one-off. Usually \"Plan\".",
+   "fieldname": "attr_plan",
+   "fieldtype": "Data",
+   "label": "Plan Attribute"
+  },
+  {
+   "default": "8",
+   "description": "How far ahead to raise draft allocations for an open-ended subscription, which has no delivery count to work through. Topped up on every run, so the window rolls forward. Past dates are never backfilled \u2014 only today onwards.",
+   "fieldname": "allocation_horizon_weeks",
+   "fieldtype": "Int",
+   "label": "Allocation Horizon (Weeks)"
+  },
+  {
+   "default": "1",
+   "description": "Raise allocations only for orders Shopify reports as PAID. Independent of Paid Orders Only on the Order Sync tab, and the two are meant to differ: pull everything so the subscription list is complete, then commit stock to nothing that has not been paid for. An order paid later is picked up on the next run, since this is re-checked every time rather than recorded once.",
+   "fieldname": "allocate_paid_only",
+   "fieldtype": "Check",
+   "label": "Allocate Paid Orders Only"
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "issingle": 1,
+ "links": [],
+ "modified": "2026-07-30 20:55:11.340156",
+ "modified_by": "Administrator",
+ "module": "Ecommerce Integration",
+ "name": "Shopify Settings",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "print": 1,
+   "read": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "row_format": "Dynamic",
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
+}

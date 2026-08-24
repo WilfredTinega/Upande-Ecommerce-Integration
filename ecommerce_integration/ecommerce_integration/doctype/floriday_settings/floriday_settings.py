@@ -3,22 +3,211 @@
 
 import frappe
 import requests
+from frappe import _
 from frappe.integrations.utils import make_post_request
 from frappe.model.document import Document
 from frappe.utils import flt
 
 SCHEDULER_TASKS = [
-	("at",         "ecommerce_integration.ecommerce_integration.doctype.floriday_settings.floriday_settings.refresh_access_token",    "Floriday: Refresh Access Token"),
-	("fi",         "ecommerce_integration.ecommerce_integration.doctype.floriday_items.floriday_items.sync_floriday_items",            "Floriday: Sync Items"),
-	("batch",      "ecommerce_integration.ecommerce_integration.doctype.floriday_settings.floriday_settings.run_create_batch",         "Floriday: Create Batches"),
-	("supplyline", "ecommerce_integration.ecommerce_integration.doctype.floriday_settings.floriday_settings.run_supplyline",           "Floriday: Create Supply Lines"),
-	("so",         "ecommerce_integration.ecommerce_integration.doctype.floriday_settings.floriday_settings.run_sales_order",          "Floriday: Sync Sales Orders"),
-	("of",         "ecommerce_integration.ecommerce_integration.doctype.floriday_settings.floriday_settings.run_order_fullfilment",    "Floriday: Order Fulfillment"),
-	("stock",      "ecommerce_integration.ecommerce_integration.doctype.floriday_settings.floriday_settings.run_refresh_stock",        "Floriday: Refresh Stock"),
+	(
+		"at",
+		"ecommerce_integration.ecommerce_integration.doctype.floriday_settings.floriday_settings.refresh_access_token",
+		"Floriday: Refresh Access Token",
+	),
+	(
+		"fi",
+		"ecommerce_integration.ecommerce_integration.doctype.floriday_items.floriday_items.sync_floriday_items",
+		"Floriday: Sync Items",
+	),
+	(
+		"batch",
+		"ecommerce_integration.ecommerce_integration.doctype.floriday_settings.floriday_settings.run_create_batch",
+		"Floriday: Create Batches",
+	),
+	(
+		"supplyline",
+		"ecommerce_integration.ecommerce_integration.doctype.floriday_settings.floriday_settings.run_supplyline",
+		"Floriday: Create Supply Lines",
+	),
+	(
+		"so",
+		"ecommerce_integration.ecommerce_integration.doctype.floriday_settings.floriday_settings.run_sales_order",
+		"Floriday: Sync Sales Orders",
+	),
+	(
+		"of",
+		"ecommerce_integration.ecommerce_integration.doctype.floriday_settings.floriday_settings.run_order_fullfilment",
+		"Floriday: Order Fulfillment",
+	),
+	(
+		"stock",
+		"ecommerce_integration.ecommerce_integration.doctype.floriday_settings.floriday_settings.run_refresh_stock",
+		"Floriday: Refresh Stock",
+	),
 ]
 
 
 class FloridaySettings(Document):
+	# begin: auto-generated types
+	# This code is auto-generated. Do not modify anything in this block.
+
+	from typing import TYPE_CHECKING
+
+	if TYPE_CHECKING:
+		from frappe.types import DF
+
+		from ecommerce_integration.ecommerce_integration.doctype.floriday_stock_view.floriday_stock_view import (
+			FloridayStockView,
+		)
+		from ecommerce_integration.ecommerce_integration.doctype.floriday_warehouse.floriday_warehouse import (
+			FloridayWarehouse,
+		)
+
+		access_token: DF.LongText | None
+		api_key: DF.Data
+		at_cron_format: DF.Data | None
+		at_enabled: DF.Check
+		at_event_frequency: DF.Literal[
+			"All",
+			"Hourly",
+			"Daily",
+			"Weekly",
+			"Monthly",
+			"Yearly",
+			"Hourly Long",
+			"Daily Long",
+			"Weekly Long",
+			"Monthly Long",
+			"Cron",
+		]
+		at_last_run: DF.Datetime | None
+		at_next_run: DF.Datetime | None
+		base_url: DF.Data
+		batch_cron_format: DF.Data | None
+		batch_enabled: DF.Check
+		batch_event_frequency: DF.Literal[
+			"All",
+			"Hourly",
+			"Daily",
+			"Weekly",
+			"Monthly",
+			"Yearly",
+			"Hourly Long",
+			"Daily Long",
+			"Weekly Long",
+			"Monthly Long",
+			"Cron",
+		]
+		batch_last_run: DF.Datetime | None
+		batch_next_run: DF.Datetime | None
+		business_unit: DF.Link | None
+		client_id: DF.Data
+		client_secret: DF.Data
+		company: DF.Link | None
+		customer: DF.Link | None
+		default_farm: DF.Link | None
+		fi_cron_format: DF.Data | None
+		fi_enabled: DF.Check
+		fi_event_frequency: DF.Literal[
+			"All",
+			"Hourly",
+			"Daily",
+			"Weekly",
+			"Monthly",
+			"Yearly",
+			"Hourly Long",
+			"Daily Long",
+			"Weekly Long",
+			"Monthly Long",
+			"Cron",
+		]
+		fi_last_run: DF.Datetime | None
+		fi_next_run: DF.Datetime | None
+		floriday_warehouses: DF.Table[FloridayWarehouse]
+		grant_type: DF.Data
+		of_cron_format: DF.Data | None
+		of_enabled: DF.Check
+		of_event_frequency: DF.Literal[
+			"All",
+			"Hourly",
+			"Daily",
+			"Weekly",
+			"Monthly",
+			"Yearly",
+			"Hourly Long",
+			"Daily Long",
+			"Weekly Long",
+			"Monthly Long",
+			"Cron",
+		]
+		of_last_run: DF.Datetime | None
+		of_next_run: DF.Datetime | None
+		of_period: DF.Int
+		organization_supplier_id: DF.Data | None
+		period: DF.Int
+		publish_enabled_stock_only: DF.Check
+		sales_order_type: DF.Data | None
+		scope: DF.SmallText
+		so_cron_format: DF.Data | None
+		so_enabled: DF.Check
+		so_event_frequency: DF.Literal[
+			"All",
+			"Hourly",
+			"Daily",
+			"Weekly",
+			"Monthly",
+			"Yearly",
+			"Hourly Long",
+			"Daily Long",
+			"Weekly Long",
+			"Monthly Long",
+			"Cron",
+		]
+		so_last_run: DF.Datetime | None
+		so_next_run: DF.Datetime | None
+		stock_cron_format: DF.Data | None
+		stock_enabled: DF.Check
+		stock_event_frequency: DF.Literal[
+			"All",
+			"Hourly",
+			"Daily",
+			"Weekly",
+			"Monthly",
+			"Yearly",
+			"Hourly Long",
+			"Daily Long",
+			"Weekly Long",
+			"Monthly Long",
+			"Cron",
+		]
+		stock_items: DF.Table[FloridayStockView]
+		stock_last_run: DF.Datetime | None
+		stock_next_run: DF.Datetime | None
+		stock_warehouse: DF.Link | None
+		supplyline_cron_format: DF.Data | None
+		supplyline_enabled: DF.Check
+		supplyline_event_frequency: DF.Literal[
+			"All",
+			"Hourly",
+			"Daily",
+			"Weekly",
+			"Monthly",
+			"Yearly",
+			"Hourly Long",
+			"Daily Long",
+			"Weekly Long",
+			"Monthly Long",
+			"Cron",
+		]
+		supplyline_last_run: DF.Datetime | None
+		supplyline_next_run: DF.Datetime | None
+		table_wtkz: DF.Table[FloridayStockView]
+		token_url: DF.Data | None
+		use_shelf_stock: DF.Check
+		warehouse: DF.Link | None
+		warehouse_id: DF.Data | None
+	# end: auto-generated types
+
 	def onload(self):
 		"""Show last_run / next_run from each Scheduled Job Type when the form loads."""
 		self._populate_scheduler_run_times()
@@ -35,7 +224,7 @@ class FloridaySettings(Document):
 		rows = self.get("floriday_warehouses") or []
 		used = [r for r in rows if r.get("used")]
 		if len(used) > 1:
-			frappe.throw("Only one Floriday warehouse can be marked as Used.")
+			frappe.throw(_("Only one Floriday warehouse can be marked as Used."))
 		if used:
 			r = used[0]
 			self.warehouse_id = r.warehouse_id or self.warehouse_id
@@ -74,22 +263,34 @@ class FloridaySettings(Document):
 
 	@frappe.whitelist()
 	def sales_order(self):
-		from ecommerce_integration.ecommerce_integration.doctype.floriday_settings.floriday_sales_order import create_sales_orders_from_floriday
+		from ecommerce_integration.ecommerce_integration.doctype.floriday_settings.floriday_sales_order import (
+			create_sales_orders_from_floriday,
+		)
+
 		return create_sales_orders_from_floriday()
 
 	@frappe.whitelist()
-	def create_batch(self, selected_rows=None):
-		from ecommerce_integration.ecommerce_integration.doctype.floriday_settings.floriday_batch import create_batches_on_floriday
+	def create_batch(self, selected_rows: str | list | None = None):
+		from ecommerce_integration.ecommerce_integration.doctype.floriday_settings.floriday_batch import (
+			create_batches_on_floriday,
+		)
+
 		return create_batches_on_floriday(selected_rows=selected_rows)
 
 	@frappe.whitelist()
 	def create_supplyine(self):
-		from ecommerce_integration.ecommerce_integration.doctype.floriday_settings.floriday_supplyline import create_supply_lines_only_from_batches
+		from ecommerce_integration.ecommerce_integration.doctype.floriday_settings.floriday_supplyline import (
+			create_supply_lines_only_from_batches,
+		)
+
 		return create_supply_lines_only_from_batches()
 
 	@frappe.whitelist()
 	def order_fullfilment(self):
-		from ecommerce_integration.ecommerce_integration.doctype.floriday_settings.floriday_order_fullfillment import order_fullment
+		from ecommerce_integration.ecommerce_integration.doctype.floriday_settings.floriday_order_fullfillment import (
+			order_fullment,
+		)
+
 		return order_fullment()
 
 	@frappe.whitelist()
@@ -181,12 +382,24 @@ class FloridaySettings(Document):
 			frappe.db.set_value("Scheduled Job Type", job_name, updates)
 
 
+def _missing_fields_message(missing):
+	"""Name only the fields that are actually blank, so the user isn't left
+	re-checking values that are already filled in."""
+	if len(missing) == 1:
+		return f"{missing[0]} is required on Floriday Settings."
+	if len(missing) == 2:
+		listed = " and ".join(missing)
+	else:
+		listed = ", ".join(missing[:-1]) + f", and {missing[-1]}"
+	return f"{listed} are required on Floriday Settings."
+
+
 def _get_settings_doc():
 	if frappe.get_meta("Floriday Settings").issingle:
 		return frappe.get_single("Floriday Settings")
 	settings_list = frappe.get_all("Floriday Settings", fields=["name"], limit_page_length=1)
 	if not settings_list:
-		frappe.throw("Floriday Settings doc not found. Please create it first.")
+		frappe.throw(_("Floriday Settings doc not found. Please create it first."))
 	return frappe.get_doc("Floriday Settings", settings_list[0].name)
 
 
@@ -194,8 +407,9 @@ def _refresh_access_token(doc=None):
 	try:
 		settings = doc or _get_settings_doc()
 
-		if not (settings.token_url and settings.client_id and settings.client_secret and settings.scope):
-			frappe.throw("token_url, client_id, client_secret, and scope are required on Floriday Settings.")
+		missing = [f for f in ("token_url", "client_id", "client_secret", "scope") if not settings.get(f)]
+		if missing:
+			frappe.throw(_missing_fields_message(missing))
 
 		payload = {
 			"grant_type": settings.grant_type or "client_credentials",
@@ -231,7 +445,10 @@ def refresh_access_token():
 def run_sales_order():
 	if not frappe.db.get_single_value("Floriday Settings", "so_enabled"):
 		return {"skipped": True, "reason": "Sales Order is disabled (so_enabled = 0)"}
-	from ecommerce_integration.ecommerce_integration.doctype.floriday_settings.floriday_sales_order import create_sales_orders_from_floriday
+	from ecommerce_integration.ecommerce_integration.doctype.floriday_settings.floriday_sales_order import (
+		create_sales_orders_from_floriday,
+	)
+
 	return create_sales_orders_from_floriday()
 
 
@@ -239,7 +456,10 @@ def run_sales_order():
 def run_create_batch():
 	if not frappe.db.get_single_value("Floriday Settings", "batch_enabled"):
 		return {"skipped": True, "reason": "Create Batch is disabled (batch_enabled = 0)"}
-	from ecommerce_integration.ecommerce_integration.doctype.floriday_settings.floriday_batch import create_batches_on_floriday
+	from ecommerce_integration.ecommerce_integration.doctype.floriday_settings.floriday_batch import (
+		create_batches_on_floriday,
+	)
+
 	return create_batches_on_floriday()
 
 
@@ -247,7 +467,10 @@ def run_create_batch():
 def run_supplyline():
 	if not frappe.db.get_single_value("Floriday Settings", "supplyline_enabled"):
 		return {"skipped": True, "reason": "Supplyline is disabled (supplyline_enabled = 0)"}
-	from ecommerce_integration.ecommerce_integration.doctype.floriday_settings.floriday_supplyline import create_supply_lines_only_from_batches
+	from ecommerce_integration.ecommerce_integration.doctype.floriday_settings.floriday_supplyline import (
+		create_supply_lines_only_from_batches,
+	)
+
 	return create_supply_lines_only_from_batches()
 
 
@@ -255,7 +478,10 @@ def run_supplyline():
 def run_order_fullfilment():
 	if not frappe.db.get_single_value("Floriday Settings", "of_enabled"):
 		return {"skipped": True, "reason": "Order Fullfilment is disabled (of_enabled = 0)"}
-	from ecommerce_integration.ecommerce_integration.doctype.floriday_settings.floriday_order_fullfillment import order_fullment
+	from ecommerce_integration.ecommerce_integration.doctype.floriday_settings.floriday_order_fullfillment import (
+		order_fullment,
+	)
+
 	return order_fullment()
 
 
@@ -277,9 +503,14 @@ def resync_scheduled_jobs():
 	Wired into hooks.after_migrate because Frappe's sync_jobs deletes any
 	Scheduled Job Type whose method isn't declared in scheduler_events.
 	"""
+	# Also called from after_install, where the doctype may not be synced yet.
+	if not frappe.db.exists("DocType", "Floriday Settings"):
+		return {"jobs": []}
 	doc = _get_settings_doc()
 	doc._sync_scheduled_jobs(force=True)
-	frappe.db.commit()
+	# Also runs from after_install/after_migrate, which have no request
+	# transaction to commit the Scheduled Job Type upserts for us.
+	frappe.db.commit()  # nosemgrep: frappe-manual-commit
 	return {
 		"jobs": frappe.get_all(
 			"Scheduled Job Type",
@@ -296,6 +527,13 @@ def _get_floriday_item_index():
 	Only rows with a trade_item_id set are included — those are the ones actually
 	offered to Floriday and the ones the Stock tab cares about.
 	"""
+	from ecommerce_integration.ecommerce_integration.utils import has_doctypes
+
+	# `Stem Length Price` belongs to upande_webshop. Without it there are no
+	# trade-item mappings to index, so the Stock tab shows nothing rather than 500ing.
+	if not has_doctypes("Floriday Items", "Stem Length Price"):
+		return {}, {}
+
 	rows = frappe.db.sql(
 		"""
 		SELECT fi.item_code, fi.item_name, slp.stem_length, slp.trade_item_id
@@ -315,7 +553,7 @@ def _get_floriday_item_index():
 	return by_code_length, by_code
 
 
-# Variant-attribute name varies between sites: kaitet uses "Length", mona uses
+# Variant-attribute name varies between sites: some use "Length", others use
 # "Stem Length". We try both and pick whichever a given template uses.
 _STEM_LENGTH_ATTR_CANDIDATES = ("Stem Length", "Length")
 
@@ -327,7 +565,9 @@ def _resolve_variant_item(template_code, stem_length):
 	If the template has variants under a `Stem Length` (or `Length`) attribute,
 	matches the variant whose attribute_value normalizes to the same stem_length.
 	"""
-	from ecommerce_integration.ecommerce_integration.doctype.floriday_items.floriday_items import _normalize_stem_length
+	from ecommerce_integration.ecommerce_integration.doctype.floriday_items.floriday_items import (
+		_normalize_stem_length,
+	)
 
 	target = _normalize_stem_length(stem_length)
 	if not target:
@@ -355,15 +595,13 @@ def _resolve_variant_item(template_code, stem_length):
 def _site_has_sle_stem_length():
 	"""Detect whether `tabStock Ledger Entry` has the `custom_stem_length` column.
 
-	Cached per request. On kaitet this is True (stem length is captured in a
-	custom field on SLE). On mona this is False — stem length is encoded in
-	variant item codes instead.
+	Cached per request. True on custom-field-model sites (stem length is captured
+	in a custom field on SLE). False on variant-model sites — there stem length is
+	encoded in variant item codes instead.
 	"""
 	if frappe.local.flags.get("_floriday_sle_stem_length_present") is not None:
 		return frappe.local.flags["_floriday_sle_stem_length_present"]
-	cols = frappe.db.sql(
-		"SHOW COLUMNS FROM `tabStock Ledger Entry` LIKE 'custom_stem_length'"
-	)
+	cols = frappe.db.sql("SHOW COLUMNS FROM `tabStock Ledger Entry` LIKE 'custom_stem_length'")
 	present = bool(cols)
 	frappe.local.flags["_floriday_sle_stem_length_present"] = present
 	return present
@@ -373,9 +611,7 @@ def _site_has_se_detail_stem_length():
 	"""Detect whether `tabStock Entry Detail` has `custom_stem_length`."""
 	if frappe.local.flags.get("_floriday_sed_stem_length_present") is not None:
 		return frappe.local.flags["_floriday_sed_stem_length_present"]
-	cols = frappe.db.sql(
-		"SHOW COLUMNS FROM `tabStock Entry Detail` LIKE 'custom_stem_length'"
-	)
+	cols = frappe.db.sql("SHOW COLUMNS FROM `tabStock Entry Detail` LIKE 'custom_stem_length'")
 	present = bool(cols)
 	frappe.local.flags["_floriday_sed_stem_length_present"] = present
 	return present
@@ -384,8 +620,8 @@ def _site_has_se_detail_stem_length():
 def _variant_to_template_index():
 	"""Map every variant item_code → (template_code, stem_length_attr_value).
 
-	Used on variant-driven sites (e.g. mona) so we can attribute warehouse stock
-	to a template + stem length. Returns {} on sites that don't use variants.
+	Used on variant-driven sites so we can attribute warehouse stock to a
+	template + stem length. Returns {} on sites that don't use variants.
 	"""
 	rows = frappe.db.sql(
 		"""
@@ -424,7 +660,7 @@ def _floriday_flagged_qty_map(item_codes, warehouses):
 	warehouse.
 
 	`Shelf Item.variety` is the plain item code and `Shelf Item.stem_length` is
-	the Stem Length name (e.g. "52cm"). On kaitet (custom-field model) the SLE
+	the Stem Length name (e.g. "52cm"). On the custom-field model the SLE
 	rows at the call site are keyed on the same plain item code, so the keys
 	align. Keys use _normalize_stem_length on both sides so "52cm"/"52"/"52 cm"
 	match the call site's normalized stem length.
@@ -433,8 +669,8 @@ def _floriday_flagged_qty_map(item_codes, warehouses):
 		_normalize_stem_length,
 	)
 	from ecommerce_integration.ecommerce_integration.utils.shelf_stock import (
-		shelf_stock_enabled,
 		get_shelf_qty_by_length,
+		shelf_stock_enabled,
 	)
 
 	if not shelf_stock_enabled("Floriday Settings"):
@@ -464,9 +700,9 @@ def _aggregate_floriday_stock(warehouses, apply_stock_source=False):
 	"""SLE-aggregated per-(warehouse, item, stem_length) balances joined to
 	Floriday Items. Handles two data models transparently:
 
-	- Custom-field model (kaitet): stem length lives in
+	- Custom-field model: stem length lives in
 	  `tabStock Ledger Entry.custom_stem_length`; aggregation groups by it.
-	- Variant model (mona): each stem length is its own variant item_code (e.g.
+	- Variant model: each stem length is its own variant item_code (e.g.
 	  Alicia-50cm). Aggregation groups by item_code only; stem length is read
 	  from the variant attribute and the template's Floriday mapping.
 
@@ -483,7 +719,9 @@ def _aggregate_floriday_stock(warehouses, apply_stock_source=False):
 	if not floriday_templates:
 		return []
 
-	from ecommerce_integration.ecommerce_integration.doctype.floriday_items.floriday_items import _normalize_stem_length
+	from ecommerce_integration.ecommerce_integration.doctype.floriday_items.floriday_items import (
+		_normalize_stem_length,
+	)
 
 	use_sle_stem = _site_has_sle_stem_length()
 
@@ -586,22 +824,24 @@ def _aggregate_floriday_stock(warehouses, apply_stock_source=False):
 		else:
 			qty = float(row.qty)
 
-		results.append({
-			"warehouse": row.warehouse,
-			"item_code": row.item_code,
-			"item_name": row.item_name,
-			"stem_length": row_stem or match.stem_length,
-			"trade_item_id": match.trade_item_id,
-			"qty": qty,
-			"uom": row.uom,
-		})
+		results.append(
+			{
+				"warehouse": row.warehouse,
+				"item_code": row.item_code,
+				"item_name": row.item_name,
+				"stem_length": row_stem or match.stem_length,
+				"trade_item_id": match.trade_item_id,
+				"qty": qty,
+				"uom": row.uom,
+			}
+		)
 
 	results.sort(key=lambda x: (x["warehouse"] or "", x["item_name"] or "", x["stem_length"] or ""))
 	return results
 
 
 @frappe.whitelist()
-def get_floriday_stock(warehouse=None):
+def get_floriday_stock(warehouse: str | None = None):
 	"""Per-(item, stem_length) balances in the configured Floriday warehouse
 	(Online Available for Sale), computed from Stock Ledger Entry and joined to
 	Floriday trade items.
@@ -640,7 +880,7 @@ def get_floriday_batch_rows():
 
 	BATCH_MULTIPLE = 200
 
-	by_code_length, by_code = _get_floriday_item_index()
+	_by_code_length, by_code = _get_floriday_item_index()
 	if not by_code:
 		return []
 
@@ -653,21 +893,21 @@ def get_floriday_batch_rows():
 
 	rows = []
 	for r in get_webshop_enabled_rows():
-		match = mapping_by_norm.get(
-			(r.get("item_code"), _normalize_stem_length(r.get("stem_length")))
-		)
+		match = mapping_by_norm.get((r.get("item_code"), _normalize_stem_length(r.get("stem_length"))))
 		if not match:
 			continue  # enabled length not offered to Floriday — can't batch it
 		qty = int(flt(r.get("stock_qty")) // BATCH_MULTIPLE * BATCH_MULTIPLE)
 		if qty < BATCH_MULTIPLE:
 			continue
-		rows.append({
-			"item_code": r.get("item_code"),
-			"item_name": r.get("item_name") or match.item_name,
-			"stem_length": r.get("stem_length") or match.stem_length,
-			"trade_item_id": match.trade_item_id,
-			"qty": qty,
-		})
+		rows.append(
+			{
+				"item_code": r.get("item_code"),
+				"item_name": r.get("item_name") or match.item_name,
+				"stem_length": r.get("stem_length") or match.stem_length,
+				"trade_item_id": match.trade_item_id,
+				"qty": qty,
+			}
+		)
 
 	rows.sort(key=lambda x: (x["item_name"] or "", x["stem_length"] or ""))
 	return rows
@@ -692,8 +932,8 @@ def get_floriday_shelf_rows():
 		_normalize_stem_length,
 	)
 	from ecommerce_integration.ecommerce_integration.utils.shelf_stock import (
-		shelf_stock_enabled,
 		get_shelf_qty_by_length,
+		shelf_stock_enabled,
 	)
 
 	if not shelf_stock_enabled("Floriday Settings"):
@@ -719,14 +959,16 @@ def get_floriday_shelf_rows():
 			match = mapping_by_norm.get(norm)
 			if not match:
 				continue  # shelf length not offered to Floriday — can't batch it
-			rows.append({
-				"item_code": item_code,
-				"item_name": match.item_name,
-				# Prefer the shelf's own length label (what the user sees on the shelf).
-				"stem_length": stem_length_name or match.stem_length,
-				"trade_item_id": match.trade_item_id,
-				"shelf_qty": flt(qty),
-			})
+			rows.append(
+				{
+					"item_code": item_code,
+					"item_name": match.item_name,
+					# Prefer the shelf's own length label (what the user sees on the shelf).
+					"stem_length": stem_length_name or match.stem_length,
+					"trade_item_id": match.trade_item_id,
+					"shelf_qty": flt(qty),
+				}
+			)
 
 	rows.sort(key=lambda r: (r["item_name"] or "", r["stem_length"] or ""))
 	return rows
@@ -755,7 +997,14 @@ def get_system_floriday_stock():
 
 @frappe.whitelist()
 @frappe.validate_and_sanitize_search_inputs
-def item_query_with_stock(doctype, txt, searchfield, start, page_len, filters):
+def item_query_with_stock(
+	doctype: str,
+	txt: str,
+	searchfield: str,
+	start: int,
+	page_len: int,
+	filters: dict | None,
+):
 	"""Link query: return Items with positive bin balance in `filters.warehouse`.
 
 	Used by the Add/Move dialog so the Item picker only shows items actually
@@ -783,7 +1032,7 @@ def item_query_with_stock(doctype, txt, searchfield, start, page_len, filters):
 
 
 @frappe.whitelist()
-def get_warehouse_stock_items(warehouse=None):
+def get_warehouse_stock_items(warehouse: str | None = None):
 	"""Return items with positive bin balance in the given warehouse.
 
 	Used by the Move Stock dialog to filter the Item Link to items actually present
@@ -809,7 +1058,7 @@ def get_warehouse_stock_items(warehouse=None):
 
 
 @frappe.whitelist()
-def get_item_floriday_meta(item_code):
+def get_item_floriday_meta(item_code: str):
 	"""Given a Stock-level item_code (could be variant or template), return any
 	matching Floriday stem_length + trade_item_id mapping plus stock UOM.
 
@@ -819,9 +1068,7 @@ def get_item_floriday_meta(item_code):
 	if not item_code:
 		return {}
 
-	item = frappe.db.get_value(
-		"Item", item_code, ["item_name", "stock_uom", "variant_of"], as_dict=True
-	)
+	item = frappe.db.get_value("Item", item_code, ["item_name", "stock_uom", "variant_of"], as_dict=True)
 	if not item:
 		return {}
 
@@ -832,7 +1079,9 @@ def get_item_floriday_meta(item_code):
 		"trade_item_id": "",
 	}
 
-	from ecommerce_integration.ecommerce_integration.doctype.floriday_items.floriday_items import _normalize_stem_length
+	from ecommerce_integration.ecommerce_integration.doctype.floriday_items.floriday_items import (
+		_normalize_stem_length,
+	)
 
 	# If item is a variant, its template is the Floriday Items key; resolve length from variant attribute.
 	template = item.variant_of or item_code
@@ -846,22 +1095,25 @@ def get_item_floriday_meta(item_code):
 		length_value = length_attr or ""
 
 	# Pull Floriday Items rows for the template
-	rows = frappe.db.sql(
-		"""
-		SELECT slp.stem_length, slp.trade_item_id
-		FROM `tabFloriday Items` fi
-		INNER JOIN `tabStem Length Price` slp ON slp.parent = fi.name
-		WHERE slp.parenttype = 'Floriday Items'
-		AND fi.item_code = %s
-		AND slp.trade_item_id IS NOT NULL AND slp.trade_item_id != ''
-		ORDER BY slp.stem_length
-		""",
-		(template,),
-		as_dict=True,
-	)
+	from ecommerce_integration.ecommerce_integration.utils import has_doctypes
+
+	rows = []
+	if has_doctypes("Floriday Items", "Stem Length Price"):
+		rows = frappe.db.sql(
+			"""
+			SELECT slp.stem_length, slp.trade_item_id
+			FROM `tabFloriday Items` fi
+			INNER JOIN `tabStem Length Price` slp ON slp.parent = fi.name
+			WHERE slp.parenttype = 'Floriday Items'
+			AND fi.item_code = %s
+			AND slp.trade_item_id IS NOT NULL AND slp.trade_item_id != ''
+			ORDER BY slp.stem_length
+			""",
+			(template,),
+			as_dict=True,
+		)
 	out["stem_length_options"] = [
-		{"stem_length": r.stem_length, "trade_item_id": r.trade_item_id}
-		for r in rows
+		{"stem_length": r.stem_length, "trade_item_id": r.trade_item_id} for r in rows
 	]
 	if not rows:
 		return out
@@ -890,17 +1142,18 @@ def get_floriday_company():
 @frappe.whitelist()
 def get_floriday_item_options():
 	"""Return Floriday Items with their stem_length / trade_item_id rows for the Add Stock dialog."""
-	by_code_length, by_code = _get_floriday_item_index()
+	_by_code_length, by_code = _get_floriday_item_index()
 	out = []
 	for item_code, rows in by_code.items():
-		out.append({
-			"item_code": item_code,
-			"item_name": rows[0].item_name,
-			"stem_lengths": [
-				{"stem_length": r.stem_length, "trade_item_id": r.trade_item_id}
-				for r in rows
-			],
-		})
+		out.append(
+			{
+				"item_code": item_code,
+				"item_name": rows[0].item_name,
+				"stem_lengths": [
+					{"stem_length": r.stem_length, "trade_item_id": r.trade_item_id} for r in rows
+				],
+			}
+		)
 	out.sort(key=lambda x: x["item_name"] or "")
 	return out
 
@@ -915,7 +1168,7 @@ def _pick_floriday_company():
 	"""
 	companies = frappe.get_all("Company", fields=["name"], order_by="name")
 	if not companies:
-		frappe.throw("No Company found")
+		frappe.throw(_("No Company found"))
 	if len(companies) == 1:
 		return companies[0].name
 	for c in companies:
@@ -978,6 +1231,27 @@ def preview_scheduler_run_times():
 	return out
 
 
+def _warehouse_label(w):
+	"""Display name for a fetched warehouse row.
+
+	Floriday's `name` is free text the supplier maintains in their own portal and
+	comes back as "" when they never set one. Falling back to the location keeps
+	the row identifiable in the grid instead of leaving a blank next to a UUID;
+	the "(unnamed)" prefix makes clear the label is ours, not Floriday's."""
+	name = (w.get("name") or "").strip()
+	if name:
+		return name
+
+	location = w.get("location") or {}
+	address = location.get("address") or {}
+	where = ", ".join(p for p in (address.get("city"), address.get("countryCode")) if p)
+	if where:
+		return f"(unnamed) {where}"
+
+	gln = (location.get("gln") or "").strip()
+	return f"(unnamed) GLN {gln}" if gln else "(unnamed)"
+
+
 def _fetch_floriday_warehouses(doc):
 	"""GET {base_url}/warehouses and replace the child table with the owned,
 	non-deleted warehouses. The first owned row's organization is mirrored
@@ -988,8 +1262,9 @@ def _fetch_floriday_warehouses(doc):
 	warehouse X, and X comes back in the new response, X stays ticked.
 	"""
 	base_url = (doc.base_url or "").rstrip("/")
-	if not (base_url and doc.api_key and doc.access_token):
-		frappe.throw("base_url, api_key, and access_token are required on Floriday Settings.")
+	missing = [f for f in ("base_url", "api_key", "access_token") if not doc.get(f)]
+	if missing:
+		frappe.throw(_missing_fields_message(missing))
 
 	headers = {
 		"Authorization": f"Bearer {doc.access_token}",
@@ -1009,7 +1284,11 @@ def _fetch_floriday_warehouses(doc):
 			message=f"HTTP {response.status_code}: {response.text[:1000]}",
 			title="Floriday Fetch Warehouses HTTP Error",
 		)
-		frappe.throw(f"Floriday returned HTTP {response.status_code}. See error log.")
+		body = (response.text or "").strip()[:300]
+		hint = ""
+		if response.status_code in (401, 403):
+			hint = " Check the API Key and access token on Floriday Settings — the gateway rejects the request before it reaches the warehouses endpoint."
+		frappe.throw(f"Floriday returned HTTP {response.status_code}: {body}.{hint} See error log.")
 
 	payload = response.json() or []
 	# API returns a list, but some endpoints wrap in {results: [...]}. Be defensive.
@@ -1020,33 +1299,42 @@ def _fetch_floriday_warehouses(doc):
 
 	# Keep only warehouses the credentials own and that are live.
 	owned = [
-		w for w in items
-		if isinstance(w, dict)
-		and w.get("hasAccess")
-		and not w.get("isExternal")
-		and not w.get("isDeleted")
+		w
+		for w in items
+		if isinstance(w, dict) and w.get("hasAccess") and not w.get("isExternal") and not w.get("isDeleted")
 	]
 
-	previously_used = {
-		r.warehouse_id for r in (doc.get("floriday_warehouses") or []) if r.get("used")
-	}
+	previously_used = {r.warehouse_id for r in (doc.get("floriday_warehouses") or []) if r.get("used")}
 
 	doc.set("floriday_warehouses", [])
 	for w in owned:
 		wid = w.get("warehouseId") or ""
-		doc.append("floriday_warehouses", {
-			"warehouse_id": wid,
-			"warehouse_name": w.get("name") or "",
-			"organization_id": w.get("organizationId") or "",
-			"used": 1 if wid in previously_used else 0,
-		})
+		doc.append(
+			"floriday_warehouses",
+			{
+				"warehouse_id": wid,
+				"warehouse_name": _warehouse_label(w),
+				"organization_id": w.get("organizationId") or "",
+				"used": 1 if wid in previously_used else 0,
+			},
+		)
 
-	if owned and not doc.organization_supplier_id:
-		doc.organization_supplier_id = owned[0].get("organizationId") or ""
+	# Fetch is an explicit refresh, so mirror the picked warehouse onto the parent
+	# fields the rest of the integration reads (batch, supplyline, sales order and
+	# fulfilment all take warehouse_id / organization_supplier_id from here). A
+	# ticked row wins; with none ticked — first fetch, or a single-warehouse
+	# account — the first owned row is used, so neither field is left blank.
+	chosen = next(
+		(w for w in owned if (w.get("warehouseId") or "") in previously_used),
+		owned[0] if owned else None,
+	)
+	if chosen:
+		doc.warehouse_id = chosen.get("warehouseId") or ""
+		doc.organization_supplier_id = chosen.get("organizationId") or ""
 
 	doc.save(ignore_permissions=True)
-	frappe.db.commit()
+	# Persist the resolved warehouse/organization ids before returning; the
+	# caller reloads the form straight from the DB.
+	frappe.db.commit()  # nosemgrep: frappe-manual-commit
 
 	return {"status": "success", "count": len(owned), "total": len(items)}
-
-

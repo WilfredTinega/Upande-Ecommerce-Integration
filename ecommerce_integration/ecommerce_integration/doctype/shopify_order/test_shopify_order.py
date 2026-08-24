@@ -1,0 +1,20 @@
+# Copyright (c) 2026, Upande LTD and Contributors
+# See license.txt
+
+# import frappe
+from ecommerce_integration.testing import IntegrationTestCase
+
+# On IntegrationTestCase, the doctype test records and all
+# link-field test record dependencies are recursively loaded
+# Use these module variables to add/remove to/from that list
+EXTRA_TEST_RECORD_DEPENDENCIES = []  # eg. ["User"]
+IGNORE_TEST_RECORD_DEPENDENCIES = []  # eg. ["User"]
+
+
+class IntegrationTestShopifyOrder(IntegrationTestCase):
+	"""
+	Integration tests for ShopifyOrder.
+	Use this class for testing interactions between multiple components.
+	"""
+
+	pass

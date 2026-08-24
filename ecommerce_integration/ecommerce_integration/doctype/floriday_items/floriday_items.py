@@ -5,6 +5,7 @@ import re
 
 import frappe
 import requests
+from frappe import _
 from frappe.model.document import Document
 
 _ITEM_GROUP_REGEXP = r"(^|[^[:alnum:]])(rose|roses|herb|herbs)([^[:alnum:]]|$)"
@@ -62,9 +63,9 @@ def _alert(message, indicator="orange"):
 # Generic stem-length + per-length pricing helpers, vendored in this app's utils
 # (they read only ERPNext Item Price / Item Attribute data). Re-exported here so
 # the rest of this integration keeps importing them from floriday_items unchanged.
-from ecommerce_integration.ecommerce_integration.utils.stem_length import (  # noqa: F401
-	_normalize_stem_length,
+from ecommerce_integration.ecommerce_integration.utils.stem_length import (
 	_item_price_rates_for_list,
+	_normalize_stem_length,
 	_stem_length_rates_from_item_prices,
 	_stem_length_rates_from_variants,
 )
@@ -72,7 +73,7 @@ from ecommerce_integration.ecommerce_integration.utils.stem_length import (  # n
 
 class FloridayItems(Document):
 	@frappe.whitelist()
-	def fetch_stem_length_prices(self, price_list=None):
+	def fetch_stem_length_prices(self, price_list: str | None = None):
 		if not self.item_code:
 			_alert("Item Code is required to fetch prices.", "red")
 			return 0
@@ -82,6 +83,7 @@ class FloridayItems(Document):
 			# → first enabled USD Selling list, with a Webshop Settings override if
 			# that app happens to be present).
 			from ecommerce_integration.ecommerce_integration.utils import _resolve_price_list
+
 			price_list = _resolve_price_list()
 
 		has_variants = frappe.db.get_value("Item", self.item_code, "has_variants")
@@ -139,7 +141,7 @@ class FloridayItems(Document):
 def _get_floriday_settings():
 	settings = frappe.get_single("Floriday Settings")
 	if not (settings.base_url and settings.access_token and settings.api_key):
-		frappe.throw("Floriday Settings missing base_url, access_token, or api_key.")
+		frappe.throw(_("Floriday Settings missing base_url, access_token, or api_key."))
 	return settings
 
 
@@ -159,14 +161,12 @@ def _fetch_floriday_trade_items():
 		frappe.throw(f"Floriday request failed: {e}")
 
 	if response.status_code != 200:
-		frappe.throw(
-			f"Floriday returned {response.status_code}: {response.text[:500]}"
-		)
+		frappe.throw(f"Floriday returned {response.status_code}: {response.text[:500]}")
 
 	data = response.json()
 	trade_items = data.get("results", data) if isinstance(data, dict) else data
 	if not isinstance(trade_items, list):
-		frappe.throw("Unexpected Floriday response shape.")
+		frappe.throw(_("Unexpected Floriday response shape."))
 
 	article_lookup = {}
 	for ti in trade_items:
@@ -200,17 +200,24 @@ def _find_or_create_floriday_item(item):
 			doc.save()
 		return doc, False
 
-	doc = frappe.get_doc({
-		"doctype": "Floriday Items",
-		"item_code": item.item_code,
-		"item_name": item.item_name,
-		"item_group": item.item_group,
-	})
+	doc = frappe.get_doc(
+		{
+			"doctype": "Floriday Items",
+			"item_code": item.item_code,
+			"item_name": item.item_name,
+			"item_group": item.item_group,
+		}
+	)
 	doc.insert()
 	return doc, True
 
 
 def get_item_mapping():
+	from ecommerce_integration.ecommerce_integration.utils import has_doctypes
+
+	if not has_doctypes("Floriday Items", "Stem Length Price"):
+		return {}
+
 	rows = frappe.db.sql(
 		"""
 		select fi.item_code, slp.trade_item_id, slp.stem_length
@@ -229,7 +236,11 @@ def get_item_mapping():
 
 
 def get_item_code_from_trade_item_id(trade_item_id):
+	from ecommerce_integration.ecommerce_integration.utils import has_doctypes
+
 	if not trade_item_id:
+		return None
+	if not has_doctypes("Floriday Items", "Stem Length Price"):
 		return None
 	row = frappe.db.sql(
 		"""
@@ -247,7 +258,7 @@ def get_item_code_from_trade_item_id(trade_item_id):
 
 
 @frappe.whitelist()
-def sync_system_items(force=False, price_list=None):
+def sync_system_items(force: bool = False, price_list: str | None = None):
 	if not force and not frappe.db.get_single_value("Floriday Settings", "fi_enabled"):
 		return {"skipped": True, "reason": "Floriday Items sync is disabled (fi_enabled = 0)"}
 
@@ -268,7 +279,7 @@ def sync_system_items(force=False, price_list=None):
 
 	created = 0
 	updated_prices = 0
-	skipped = 0
+	errors = 0
 	for item in items:
 		try:
 			doc, was_created = _find_or_create_floriday_item(item)
@@ -277,22 +288,26 @@ def sync_system_items(force=False, price_list=None):
 			doc.fetch_stem_length_prices(price_list=price_list)
 			updated_prices += 1
 		except Exception as e:
-			skipped += 1
+			errors += 1
 			frappe.log_error(
 				f"sync_system_items failed for {item.item_code} / {item.item_name}: {e}",
 				"Floriday Items Sync",
 			)
 
+	# `errors`, not `skipped`: everywhere else in this app `skipped` is the boolean
+	# "the job did not run" flag that pairs with `reason`. Returning a count under
+	# that name made callers take the didn't-run branch and report an absent
+	# `reason`, and collided with `skipped` in sync_floriday_items' merged dict.
 	return {
 		"items_processed": len(items),
 		"floriday_docs_created": created,
 		"price_refreshes": updated_prices,
-		"skipped": skipped,
+		"errors": errors,
 	}
 
 
 @frappe.whitelist()
-def update_trade_item_ids(force=False):
+def update_trade_item_ids(force: bool = False):
 	if not force and not frappe.db.get_single_value("Floriday Settings", "fi_enabled"):
 		return {"skipped": True, "reason": "Floriday Items sync is disabled (fi_enabled = 0)"}
 
@@ -322,11 +337,13 @@ def update_trade_item_ids(force=False):
 			for row in doc.table_ppvq:
 				total_rows += 1
 				if not row.trade_item_id:
-					unmatched.append({
-						"item_code": doc.item_code,
-						"item_name": doc.item_name,
-						"stem_length": row.stem_length,
-					})
+					unmatched.append(
+						{
+							"item_code": doc.item_code,
+							"item_name": doc.item_name,
+							"stem_length": row.stem_length,
+						}
+					)
 			if matched:
 				doc.save()
 				total_matched += matched
@@ -338,10 +355,7 @@ def update_trade_item_ids(force=False):
 			)
 
 	if unmatched and total_matched < total_rows:
-		sample_lines = [
-			f"{u['item_code']} ({u['item_name']}) / {u['stem_length']}"
-			for u in unmatched[:10]
-		]
+		sample_lines = [f"{u['item_code']} ({u['item_name']}) / {u['stem_length']}" for u in unmatched[:10]]
 		sample_keys = list(article_lookup.keys())[:10]
 		frappe.log_error(
 			"Unmatched rows (sample):\n"
@@ -362,7 +376,7 @@ def update_trade_item_ids(force=False):
 
 
 @frappe.whitelist()
-def sync_floriday_items(force=False, price_list=None):
+def sync_floriday_items(force: bool = False, price_list: str | None = None):
 	system = sync_system_items(force=force, price_list=price_list)
 	trade = update_trade_item_ids(force=force)
 	return {**system, **trade}

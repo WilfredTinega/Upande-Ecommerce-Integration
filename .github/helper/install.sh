@@ -67,3 +67,12 @@ CI=Yes bench build --app frappe &
 bench --site test_site reinstall --yes
 
 bench --verbose --site test_site install-app ecommerce_integration
+
+# `bench run-tests` builds a test record for every link-field dependency it can
+# reach, so the site needs ERPNext's setup-wizard fixtures (Company, fiscal year,
+# the "Transit" Warehouse Type) AND stubs for the link targets owned by sibling
+# Upande apps that are not installed here (Business Unit, Farm, Consignee, ...).
+# setup_test_site does both, then re-applies the custom fields that point at
+# them. Run via `bench execute` (real exit code) so a failure fails THIS step
+# loudly instead of resurfacing as confusing test-record errors.
+bench --site test_site execute ecommerce_integration.setup.ci.setup_test_site

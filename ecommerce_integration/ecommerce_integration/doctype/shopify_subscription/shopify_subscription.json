@@ -1,0 +1,432 @@
+{
+ "actions": [],
+ "autoname": "format:SHOP-SUB-{shopify_contract_id}",
+ "creation": "2026-07-30 08:30:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "contract_section",
+  "shopify_contract_id",
+  "status",
+  "column_break_contract",
+  "shopify_customer_id",
+  "customer",
+  "customer_name_shopify",
+  "customer_email",
+  "billing_section",
+  "interval",
+  "interval_count",
+  "delivery_day",
+  "delivery_days",
+  "column_break_billing",
+  "next_billing_date",
+  "last_billing_date",
+  "amount",
+  "currency",
+  "boxes_section",
+  "boxes",
+  "delivery_section",
+  "delivery_method",
+  "shipping_address",
+  "column_break_delivery",
+  "shipping_city",
+  "shipping_country",
+  "sync_section",
+  "last_synced_on",
+  "shopify_created_at",
+  "shopify_updated_at",
+  "column_break_sync",
+  "sync_error",
+  "payload_section",
+  "shopify_payload",
+  "schedule_section",
+  "start_date",
+  "end_date",
+  "is_open_ended",
+  "deliveries_total",
+  "column_break_schedule",
+  "deliveries_completed",
+  "deliveries_remaining",
+  "source",
+  "source_order",
+  "gift_section",
+  "is_gift",
+  "recipient_name",
+  "recipient_phone",
+  "column_break_gift",
+  "recipient_email",
+  "gift_note",
+  "special_requests"
+ ],
+ "fields": [
+  {
+   "fieldname": "contract_section",
+   "fieldtype": "Section Break",
+   "label": "Shopify Contract"
+  },
+  {
+   "description": "Numeric id of the Shopify SubscriptionContract. Drives the document name, so a re-sync updates instead of duplicating.",
+   "fieldname": "shopify_contract_id",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Shopify Contract ID",
+   "read_only": 1,
+   "reqd": 1,
+   "unique": 1
+  },
+  {
+   "default": "Active",
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Status",
+   "options": "\nActive\nPaused\nInactive\nCancelled\nExpired\nFailed"
+  },
+  {
+   "fieldname": "column_break_contract",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "shopify_customer_id",
+   "fieldtype": "Data",
+   "label": "Shopify Customer ID",
+   "read_only": 1
+  },
+  {
+   "description": "Matched ERPNext customer. Falls back to the default customer in Shopify Settings when no match is found.",
+   "fieldname": "customer",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Customer",
+   "options": "Customer"
+  },
+  {
+   "fieldname": "customer_name_shopify",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Subscriber Name",
+   "read_only": 1
+  },
+  {
+   "fieldname": "customer_email",
+   "fieldtype": "Data",
+   "label": "Subscriber Email",
+   "read_only": 1
+  },
+  {
+   "fieldname": "billing_section",
+   "fieldtype": "Section Break",
+   "label": "Billing Cycle"
+  },
+  {
+   "fieldname": "interval",
+   "fieldtype": "Select",
+   "in_standard_filter": 1,
+   "label": "Interval",
+   "options": "\nDAY\nWEEK\nMONTH\nYEAR",
+   "read_only": 1
+  },
+  {
+   "description": "Every N intervals. interval=WEEK with interval_count=2 means fortnightly.",
+   "fieldname": "interval_count",
+   "fieldtype": "Int",
+   "label": "Interval Count",
+   "read_only": 1
+  },
+  {
+   "description": "Weekday derived from next_billing_date.",
+   "fieldname": "delivery_day",
+   "fieldtype": "Select",
+   "label": "Delivery Day",
+   "options": "\nMonday\nTuesday\nWednesday\nThursday\nFriday\nSaturday\nSunday",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_billing",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "next_billing_date",
+   "fieldtype": "Date",
+   "in_list_view": 1,
+   "label": "Next Billing Date",
+   "read_only": 1
+  },
+  {
+   "fieldname": "last_billing_date",
+   "fieldtype": "Date",
+   "label": "Last Billing Date",
+   "read_only": 1
+  },
+  {
+   "fieldname": "amount",
+   "fieldtype": "Currency",
+   "label": "Cycle Amount",
+   "options": "currency",
+   "read_only": 1
+  },
+  {
+   "fieldname": "currency",
+   "fieldtype": "Link",
+   "label": "Currency",
+   "options": "Currency",
+   "read_only": 1
+  },
+  {
+   "description": "What the subscriber buys, as Shopify sells it: a box product per line, not individual stems.",
+   "fieldname": "boxes_section",
+   "fieldtype": "Section Break",
+   "label": "Boxes"
+  },
+  {
+   "fieldname": "boxes",
+   "fieldtype": "Table",
+   "label": "Boxes",
+   "options": "Shopify Subscription Line"
+  },
+  {
+   "fieldname": "delivery_section",
+   "fieldtype": "Section Break",
+   "label": "Delivery"
+  },
+  {
+   "fieldname": "delivery_method",
+   "fieldtype": "Data",
+   "label": "Delivery Method",
+   "read_only": 1
+  },
+  {
+   "fieldname": "shipping_address",
+   "fieldtype": "Small Text",
+   "label": "Shipping Address",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_delivery",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "shipping_city",
+   "fieldtype": "Data",
+   "label": "City",
+   "read_only": 1
+  },
+  {
+   "fieldname": "shipping_country",
+   "fieldtype": "Data",
+   "label": "Country",
+   "read_only": 1
+  },
+  {
+   "collapsible": 1,
+   "fieldname": "sync_section",
+   "fieldtype": "Section Break",
+   "label": "Sync"
+  },
+  {
+   "fieldname": "last_synced_on",
+   "fieldtype": "Datetime",
+   "label": "Last Synced On",
+   "read_only": 1
+  },
+  {
+   "fieldname": "shopify_created_at",
+   "fieldtype": "Datetime",
+   "label": "Created on Shopify",
+   "read_only": 1
+  },
+  {
+   "description": "Watermark the poller compares against. Push it forward, never backward.",
+   "fieldname": "shopify_updated_at",
+   "fieldtype": "Datetime",
+   "label": "Updated on Shopify",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_sync",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "sync_error",
+   "fieldtype": "Small Text",
+   "label": "Last Sync Error",
+   "read_only": 1
+  },
+  {
+   "collapsible": 1,
+   "fieldname": "payload_section",
+   "fieldtype": "Section Break",
+   "label": "Raw Payload"
+  },
+  {
+   "fieldname": "shopify_payload",
+   "fieldtype": "Code",
+   "label": "Shopify Payload",
+   "options": "JSON",
+   "read_only": 1
+  },
+  {
+   "fieldname": "schedule_section",
+   "fieldtype": "Section Break",
+   "label": "Schedule"
+  },
+  {
+   "fieldname": "start_date",
+   "fieldtype": "Date",
+   "label": "Start Date",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "end_date",
+   "fieldtype": "Date",
+   "label": "End Date",
+   "in_standard_filter": 1,
+   "description": "Once this date has passed the subscription is flipped to Inactive and stops generating deliveries."
+  },
+  {
+   "fieldname": "deliveries_total",
+   "fieldtype": "Int",
+   "label": "Deliveries Total",
+   "description": "Boxes purchased, e.g. 3 boxes over 3 months."
+  },
+  {
+   "fieldname": "column_break_schedule",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "deliveries_completed",
+   "fieldtype": "Int",
+   "label": "Deliveries Completed",
+   "read_only": 1
+  },
+  {
+   "fieldname": "deliveries_remaining",
+   "fieldtype": "Int",
+   "label": "Deliveries Remaining",
+   "read_only": 1
+  },
+  {
+   "fieldname": "source",
+   "fieldtype": "Select",
+   "label": "Source",
+   "options": "\nContract\nOrder",
+   "read_only": 1,
+   "description": "Contract: pulled from a Shopify subscription contract. Order: derived from a prepaid multi-delivery order."
+  },
+  {
+   "fieldname": "source_order",
+   "fieldtype": "Link",
+   "label": "Source Order",
+   "options": "Shopify Order",
+   "read_only": 1
+  },
+  {
+   "fieldname": "gift_section",
+   "fieldtype": "Section Break",
+   "label": "Gift & Requests"
+  },
+  {
+   "fieldname": "is_gift",
+   "fieldtype": "Check",
+   "label": "Is a Gift",
+   "default": "0",
+   "description": "When set, the recipient below differs from the paying customer."
+  },
+  {
+   "fieldname": "recipient_name",
+   "fieldtype": "Data",
+   "label": "Recipient Name"
+  },
+  {
+   "fieldname": "recipient_phone",
+   "fieldtype": "Data",
+   "label": "Recipient Phone"
+  },
+  {
+   "fieldname": "column_break_gift",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "recipient_email",
+   "fieldtype": "Data",
+   "label": "Recipient Email"
+  },
+  {
+   "fieldname": "gift_note",
+   "fieldtype": "Small Text",
+   "label": "Handwritten Note"
+  },
+  {
+   "fieldname": "special_requests",
+   "fieldtype": "Small Text",
+   "label": "Special Requests"
+  },
+  {
+   "description": "Runs until cancelled. Deliveries Total stays 0, End Date stays blank, and the expiry job leaves it Active \u2014 it has no purchased quantity to exhaust.",
+   "fieldname": "is_open_ended",
+   "fieldtype": "Check",
+   "label": "Open-Ended",
+   "read_only": 1
+  },
+  {
+   "description": "Weekday names, comma separated \u2014 \"Monday, Thursday\" with a Weekly cadence is how twice a week is expressed. Seeded from the first delivery's own weekday when the subscription is derived, then yours to edit. Left blank, deliveries fall one per period stepping from the start date, which is the original behaviour. Ignored for a Monthly cadence, where a weekday has no meaning.",
+   "fieldname": "delivery_days",
+   "fieldtype": "Data",
+   "label": "Delivery Days"
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "links": [
+  {
+   "link_doctype": "Shopify Allocation",
+   "link_fieldname": "shopify_subscription"
+  }
+ ],
+ "modified": "2026-07-30 08:30:00.000000",
+ "modified_by": "Administrator",
+ "module": "Ecommerce Integration",
+ "name": "Shopify Subscription",
+ "naming_rule": "Expression",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Sales Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Sales User"
+  }
+ ],
+ "row_format": "Dynamic",
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "title_field": "customer_name_shopify",
+ "track_changes": 1
+}
