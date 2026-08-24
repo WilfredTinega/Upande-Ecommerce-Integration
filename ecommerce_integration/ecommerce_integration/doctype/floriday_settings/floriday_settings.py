@@ -53,50 +53,21 @@ class FloridaySettings(Document):
 	from typing import TYPE_CHECKING
 
 	if TYPE_CHECKING:
+		from ecommerce_integration.ecommerce_integration.doctype.floriday_stock_view.floriday_stock_view import FloridayStockView
+		from ecommerce_integration.ecommerce_integration.doctype.floriday_warehouse.floriday_warehouse import FloridayWarehouse
 		from frappe.types import DF
-
-		from ecommerce_integration.ecommerce_integration.doctype.floriday_stock_view.floriday_stock_view import (
-			FloridayStockView,
-		)
-		from ecommerce_integration.ecommerce_integration.doctype.floriday_warehouse.floriday_warehouse import (
-			FloridayWarehouse,
-		)
 
 		access_token: DF.LongText | None
 		api_key: DF.Data
 		at_cron_format: DF.Data | None
 		at_enabled: DF.Check
-		at_event_frequency: DF.Literal[
-			"All",
-			"Hourly",
-			"Daily",
-			"Weekly",
-			"Monthly",
-			"Yearly",
-			"Hourly Long",
-			"Daily Long",
-			"Weekly Long",
-			"Monthly Long",
-			"Cron",
-		]
+		at_event_frequency: DF.Literal["All", "Hourly", "Daily", "Weekly", "Monthly", "Yearly", "Hourly Long", "Daily Long", "Weekly Long", "Monthly Long", "Cron"]
 		at_last_run: DF.Datetime | None
 		at_next_run: DF.Datetime | None
 		base_url: DF.Data
 		batch_cron_format: DF.Data | None
 		batch_enabled: DF.Check
-		batch_event_frequency: DF.Literal[
-			"All",
-			"Hourly",
-			"Daily",
-			"Weekly",
-			"Monthly",
-			"Yearly",
-			"Hourly Long",
-			"Daily Long",
-			"Weekly Long",
-			"Monthly Long",
-			"Cron",
-		]
+		batch_event_frequency: DF.Literal["All", "Hourly", "Daily", "Weekly", "Monthly", "Yearly", "Hourly Long", "Daily Long", "Weekly Long", "Monthly Long", "Cron"]
 		batch_last_run: DF.Datetime | None
 		batch_next_run: DF.Datetime | None
 		business_unit: DF.Link | None
@@ -107,38 +78,14 @@ class FloridaySettings(Document):
 		default_farm: DF.Link | None
 		fi_cron_format: DF.Data | None
 		fi_enabled: DF.Check
-		fi_event_frequency: DF.Literal[
-			"All",
-			"Hourly",
-			"Daily",
-			"Weekly",
-			"Monthly",
-			"Yearly",
-			"Hourly Long",
-			"Daily Long",
-			"Weekly Long",
-			"Monthly Long",
-			"Cron",
-		]
+		fi_event_frequency: DF.Literal["All", "Hourly", "Daily", "Weekly", "Monthly", "Yearly", "Hourly Long", "Daily Long", "Weekly Long", "Monthly Long", "Cron"]
 		fi_last_run: DF.Datetime | None
 		fi_next_run: DF.Datetime | None
 		floriday_warehouses: DF.Table[FloridayWarehouse]
 		grant_type: DF.Data
 		of_cron_format: DF.Data | None
 		of_enabled: DF.Check
-		of_event_frequency: DF.Literal[
-			"All",
-			"Hourly",
-			"Daily",
-			"Weekly",
-			"Monthly",
-			"Yearly",
-			"Hourly Long",
-			"Daily Long",
-			"Weekly Long",
-			"Monthly Long",
-			"Cron",
-		]
+		of_event_frequency: DF.Literal["All", "Hourly", "Daily", "Weekly", "Monthly", "Yearly", "Hourly Long", "Daily Long", "Weekly Long", "Monthly Long", "Cron"]
 		of_last_run: DF.Datetime | None
 		of_next_run: DF.Datetime | None
 		of_period: DF.Int
@@ -149,55 +96,19 @@ class FloridaySettings(Document):
 		scope: DF.SmallText
 		so_cron_format: DF.Data | None
 		so_enabled: DF.Check
-		so_event_frequency: DF.Literal[
-			"All",
-			"Hourly",
-			"Daily",
-			"Weekly",
-			"Monthly",
-			"Yearly",
-			"Hourly Long",
-			"Daily Long",
-			"Weekly Long",
-			"Monthly Long",
-			"Cron",
-		]
+		so_event_frequency: DF.Literal["All", "Hourly", "Daily", "Weekly", "Monthly", "Yearly", "Hourly Long", "Daily Long", "Weekly Long", "Monthly Long", "Cron"]
 		so_last_run: DF.Datetime | None
 		so_next_run: DF.Datetime | None
 		stock_cron_format: DF.Data | None
 		stock_enabled: DF.Check
-		stock_event_frequency: DF.Literal[
-			"All",
-			"Hourly",
-			"Daily",
-			"Weekly",
-			"Monthly",
-			"Yearly",
-			"Hourly Long",
-			"Daily Long",
-			"Weekly Long",
-			"Monthly Long",
-			"Cron",
-		]
+		stock_event_frequency: DF.Literal["All", "Hourly", "Daily", "Weekly", "Monthly", "Yearly", "Hourly Long", "Daily Long", "Weekly Long", "Monthly Long", "Cron"]
 		stock_items: DF.Table[FloridayStockView]
 		stock_last_run: DF.Datetime | None
 		stock_next_run: DF.Datetime | None
 		stock_warehouse: DF.Link | None
 		supplyline_cron_format: DF.Data | None
 		supplyline_enabled: DF.Check
-		supplyline_event_frequency: DF.Literal[
-			"All",
-			"Hourly",
-			"Daily",
-			"Weekly",
-			"Monthly",
-			"Yearly",
-			"Hourly Long",
-			"Daily Long",
-			"Weekly Long",
-			"Monthly Long",
-			"Cron",
-		]
+		supplyline_event_frequency: DF.Literal["All", "Hourly", "Daily", "Weekly", "Monthly", "Yearly", "Hourly Long", "Daily Long", "Weekly Long", "Monthly Long", "Cron"]
 		supplyline_last_run: DF.Datetime | None
 		supplyline_next_run: DF.Datetime | None
 		table_wtkz: DF.Table[FloridayStockView]
@@ -1221,6 +1132,27 @@ def preview_scheduler_run_times():
 	return out
 
 
+def _warehouse_label(w):
+	"""Display name for a fetched warehouse row.
+
+	Floriday's `name` is free text the supplier maintains in their own portal and
+	comes back as "" when they never set one. Falling back to the location keeps
+	the row identifiable in the grid instead of leaving a blank next to a UUID;
+	the "(unnamed)" prefix makes clear the label is ours, not Floriday's."""
+	name = (w.get("name") or "").strip()
+	if name:
+		return name
+
+	location = w.get("location") or {}
+	address = location.get("address") or {}
+	where = ", ".join(p for p in (address.get("city"), address.get("countryCode")) if p)
+	if where:
+		return f"(unnamed) {where}"
+
+	gln = (location.get("gln") or "").strip()
+	return f"(unnamed) GLN {gln}" if gln else "(unnamed)"
+
+
 def _fetch_floriday_warehouses(doc):
 	"""GET {base_url}/warehouses and replace the child table with the owned,
 	non-deleted warehouses. The first owned row's organization is mirrored
@@ -1282,14 +1214,24 @@ def _fetch_floriday_warehouses(doc):
 			"floriday_warehouses",
 			{
 				"warehouse_id": wid,
-				"warehouse_name": w.get("name") or "",
+				"warehouse_name": _warehouse_label(w),
 				"organization_id": w.get("organizationId") or "",
 				"used": 1 if wid in previously_used else 0,
 			},
 		)
 
-	if owned and not doc.organization_supplier_id:
-		doc.organization_supplier_id = owned[0].get("organizationId") or ""
+	# Fetch is an explicit refresh, so mirror the picked warehouse onto the parent
+	# fields the rest of the integration reads (batch, supplyline, sales order and
+	# fulfilment all take warehouse_id / organization_supplier_id from here). A
+	# ticked row wins; with none ticked — first fetch, or a single-warehouse
+	# account — the first owned row is used, so neither field is left blank.
+	chosen = next(
+		(w for w in owned if (w.get("warehouseId") or "") in previously_used),
+		owned[0] if owned else None,
+	)
+	if chosen:
+		doc.warehouse_id = chosen.get("warehouseId") or ""
+		doc.organization_supplier_id = chosen.get("organizationId") or ""
 
 	doc.save(ignore_permissions=True)
 	frappe.db.commit()

@@ -487,8 +487,10 @@ def create_sales_orders_from_floriday():
         if not all([API_KEY, BASE_URL, ACCESS_TOKEN, SUPPLIER_ORG_ID]):
             frappe.throw("Floriday Settings incomplete")
 
-        if not WAREHOUSE:
-            frappe.throw("Warehouse not configured in Floriday Settings")
+        # WAREHOUSE is optional: stock is allocated on the Sales Order itself, so
+        # fetching orders must not depend on it. When it is unset each line falls
+        # back to the item's Item Default warehouse, then to any leaf warehouse of
+        # the configured company (see create_sales_order_from_floriday).
 
         # Window goes back `period` hours from now (configurable on Floriday Settings).
         # Fall back to 24h if the field is unset/zero/invalid.

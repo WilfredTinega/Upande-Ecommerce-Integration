@@ -52,9 +52,9 @@ use_json_request_body = True
 # page_js = {"page" : "public/js/file.js"}
 
 # include js in doctype views
-# Shared Shelf Stock move dialog + inline-button helper (registers the
-# `upande_webshop.*` client globals the settings forms call). Copied from
-# upande_webshop; the server methods it xcalls still live in upande_webshop.
+# Shared inline "enable stock -> webshop" picker (registers the
+# `ecommerce_integration.*` client globals the settings forms call). Its server
+# methods live in this app, in ecommerce_integration/utils/stock_picker.py.
 doctype_js = {
 	"Biflorica Setting": "public/js/shelf_move.js",
 	"Floriday Settings": "public/js/shelf_move.js",

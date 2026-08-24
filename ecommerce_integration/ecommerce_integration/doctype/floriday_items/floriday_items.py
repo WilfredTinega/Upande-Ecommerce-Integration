@@ -277,7 +277,7 @@ def sync_system_items(force=False, price_list=None):
 
 	created = 0
 	updated_prices = 0
-	skipped = 0
+	errors = 0
 	for item in items:
 		try:
 			doc, was_created = _find_or_create_floriday_item(item)
@@ -286,17 +286,21 @@ def sync_system_items(force=False, price_list=None):
 			doc.fetch_stem_length_prices(price_list=price_list)
 			updated_prices += 1
 		except Exception as e:
-			skipped += 1
+			errors += 1
 			frappe.log_error(
 				f"sync_system_items failed for {item.item_code} / {item.item_name}: {e}",
 				"Floriday Items Sync",
 			)
 
+	# `errors`, not `skipped`: everywhere else in this app `skipped` is the boolean
+	# "the job did not run" flag that pairs with `reason`. Returning a count under
+	# that name made callers take the didn't-run branch and report an absent
+	# `reason`, and collided with `skipped` in sync_floriday_items' merged dict.
 	return {
 		"items_processed": len(items),
 		"floriday_docs_created": created,
 		"price_refreshes": updated_prices,
-		"skipped": skipped,
+		"errors": errors,
 	}
 
 

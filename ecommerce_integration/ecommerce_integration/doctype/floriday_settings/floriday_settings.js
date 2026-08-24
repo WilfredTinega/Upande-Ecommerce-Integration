@@ -239,7 +239,7 @@ frappe.ui.form.on("Floriday Settings", {
 		check_custom_fields(frm, { silent: true });
 		// Shelf-mode batch picker.
 		load_shelf_stock_panel(frm);
-		upande_webshop.render_shelf_move_buttons({
+		ecommerce_integration.render_shelf_move_buttons({
 			frm,
 			channel: "Floriday",
 			fieldname: "shelf_stock_actions",
@@ -253,7 +253,7 @@ frappe.ui.form.on("Floriday Settings", {
 		if (frm.doc.use_shelf_stock) {
 			load_shelf_stock_panel(frm);
 		}
-		upande_webshop.render_shelf_move_buttons({
+		ecommerce_integration.render_shelf_move_buttons({
 			frm,
 			channel: "Floriday",
 			fieldname: "shelf_stock_actions",
@@ -394,10 +394,10 @@ frappe.ui.form.on("Floriday Settings", {
 				const m = r.message;
 				if (!m) return;
 				if (m.skipped) {
-					frappe.show_alert({ message: m.reason, indicator: "orange" });
+					frappe.show_alert({ message: m.reason || __("Sync skipped"), indicator: "orange" });
 					return;
 				}
-				const summary = `${m.floriday_docs_created || 0} created, ${m.price_refreshes || 0} prices refreshed${m.skipped ? `, ${m.skipped} errors` : ""}`;
+				const summary = `${m.floriday_docs_created || 0} created, ${m.price_refreshes || 0} prices refreshed${m.errors ? `, ${m.errors} errors` : ""}`;
 				frappe.show_alert({ message: summary, indicator: "green" }, 7);
 			},
 			error() {
@@ -416,7 +416,7 @@ frappe.ui.form.on("Floriday Settings", {
 				const m = r.message;
 				if (!m) return;
 				if (m.skipped) {
-					frappe.show_alert({ message: m.reason, indicator: "orange" });
+					frappe.show_alert({ message: m.reason || __("Sync skipped"), indicator: "orange" });
 					return;
 				}
 				if (m.error) {

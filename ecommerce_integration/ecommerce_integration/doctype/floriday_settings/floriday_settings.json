@@ -324,12 +324,14 @@
   {
    "fieldname": "warehouse_id",
    "fieldtype": "Data",
-   "label": "Warehouse ID"
+   "label": "Warehouse ID",
+   "read_only": 1
   },
   {
    "fieldname": "organization_supplier_id",
    "fieldtype": "Data",
-   "label": "Organization Supplier ID"
+   "label": "Organization Supplier ID",
+   "read_only": 1
   },
   {
    "fieldname": "base_url",
@@ -797,7 +799,7 @@
  "index_web_pages_for_search": 1,
  "issingle": 1,
  "links": [],
- "modified": "2026-08-24 12:48:35.566851",
+ "modified": "2026-08-24 18:20:29.676897",
  "modified_by": "Administrator",
  "module": "Ecommerce Integration",
  "name": "Floriday Settings",
