@@ -12,6 +12,8 @@
   "column_break_order",
   "shopify_subscription",
   "customer",
+  "customer_address",
+  "subscriber_contact",
   "customer_email",
   "pipeline_section",
   "allocation_status",
@@ -48,6 +50,8 @@
   "start_date",
   "end_date",
   "needs_allocation",
+  "plan_label",
+  "is_open_ended",
   "gift_section",
   "is_gift",
   "recipient_name",
@@ -365,6 +369,35 @@
    "fieldname": "allocations_raised",
    "fieldtype": "Int",
    "label": "Allocations Raised",
+   "read_only": 1
+  },
+  {
+   "description": "Verbatim from the storefront, before classification.",
+   "fieldname": "plan_label",
+   "fieldtype": "Data",
+   "label": "Plan",
+   "read_only": 1
+  },
+  {
+   "description": "An indefinite subscription: no delivery count and no end date. Seal raises a fresh order each cycle, so each one contributes a single delivery.",
+   "fieldname": "is_open_ended",
+   "fieldtype": "Check",
+   "label": "Open-Ended Subscription",
+   "read_only": 1
+  },
+  {
+   "description": "The subscriber's Shipping Address, attached to the customer above.",
+   "fieldname": "customer_address",
+   "fieldtype": "Link",
+   "label": "Subscriber Address",
+   "options": "Address",
+   "read_only": 1
+  },
+  {
+   "fieldname": "subscriber_contact",
+   "fieldtype": "Link",
+   "label": "Subscriber Contact",
+   "options": "Contact",
    "read_only": 1
   }
  ],

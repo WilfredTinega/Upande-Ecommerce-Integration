@@ -41,6 +41,50 @@ upande.shopify = {
 		return { colour: "green", label: __("Connected"), scopes, connected: true };
 	},
 
+	/** Announce a background job's outcome from its own flags, not from the absence
+	 * of an exception.
+	 *
+	 * None of these endpoints raise on failure: a denied scope or a mistyped field is
+	 * caught server-side and handed back in the payload so a scheduled run can't
+	 * crash. Read the flags or a failure gets announced as "Complete" in green with
+	 * the error as its body text — which is exactly what happened with
+	 * subscriptionContracts and read_own_subscription_contracts.
+	 */
+	report_run(noun, res) {
+		const errors = cint(res.failed);
+		// Per-record failures are counted, not raised — each one is rolled back on its
+		// own so the rest of the batch survives. A run that touched nothing and failed
+		// 42 times is not a success, and a run that half worked is not a plain one
+		// either, so the count decides the colour alongside the flags.
+		const progressed = ["created", "updated", "inactive", "running", "complete"].some(
+			(key) => cint(res[key]) > 0
+		);
+		const skipped = !!res.skipped;
+		const dead = !!res.aborted || (errors > 0 && !progressed);
+		const partial = errors > 0 && progressed;
+
+		const text = res.summary || res.reason || __("No summary returned");
+		let title = __("{0} Complete", [noun]);
+		let indicator = "green";
+		if (dead) {
+			title = __("{0} Failed", [noun]);
+			indicator = "red";
+		} else if (partial) {
+			title = __("{0} Completed With Errors", [noun]);
+			indicator = "orange";
+		} else if (skipped) {
+			title = __("{0} Skipped", [noun]);
+			indicator = "orange";
+		}
+
+		frappe.msgprint({
+			title: title,
+			indicator: indicator,
+			// Server-side summaries carry newlines; escaping alone would collapse them.
+			message: frappe.utils.escape_html(text).replace(/\n/g, "<br>"),
+		});
+	},
+
 	show_status(frm) {
 		const state = this.state(frm);
 
@@ -213,14 +257,10 @@ frappe.ui.form.on("Shopify Settings", {
 			frappe.msgprint(__("Save Shopify Settings before syncing."));
 			return;
 		}
-		frappe.dom.freeze(__("Pulling subscription contracts..."));
+		frappe.dom.freeze(__("Deriving subscriptions from stored orders..."));
 		frm.call("sync_now")
 			.then((r) => {
-				const res = (r && r.message) || {};
-				frappe.msgprint({
-					title: __("Sync Complete"),
-					message: frappe.utils.escape_html(res.summary || __("No summary returned")),
-				});
+				upande.shopify.report_run(__("Subscription Derivation"), (r && r.message) || {});
 				frm.reload_doc();
 			})
 			.always(() => frappe.dom.unfreeze());
@@ -234,11 +274,7 @@ frappe.ui.form.on("Shopify Settings", {
 		frappe.dom.freeze(__("Pulling subscription orders..."));
 		frm.call("sync_orders_now")
 			.then((r) => {
-				const res = (r && r.message) || {};
-				frappe.msgprint({
-					title: __("Order Sync Complete"),
-					message: frappe.utils.escape_html(res.summary || __("No summary returned")),
-				});
+				upande.shopify.report_run(__("Order Sync"), (r && r.message) || {});
 				frm.reload_doc();
 			})
 			.always(() => frappe.dom.unfreeze());
@@ -269,11 +305,7 @@ frappe.ui.form.on("Shopify Settings", {
 		frappe.dom.freeze(__("Checking subscription end dates..."));
 		frm.call("expire_now")
 			.then((r) => {
-				const res = (r && r.message) || {};
-				frappe.msgprint({
-					title: __("Expiry Run Complete"),
-					message: frappe.utils.escape_html(res.summary || __("No summary returned")),
-				});
+				upande.shopify.report_run(__("Expiry Run"), (r && r.message) || {});
 				frm.reload_doc();
 			})
 			.always(() => frappe.dom.unfreeze());
@@ -287,11 +319,7 @@ frappe.ui.form.on("Shopify Settings", {
 		frappe.dom.freeze(__("Raising allocations..."));
 		frm.call("generate_allocations")
 			.then((r) => {
-				const res = (r && r.message) || {};
-				frappe.msgprint({
-					title: __("Allocations Generated"),
-					message: frappe.utils.escape_html(res.summary || __("No summary returned")),
-				});
+				upande.shopify.report_run(__("Allocations"), (r && r.message) || {});
 				frm.reload_doc();
 			})
 			.always(() => frappe.dom.unfreeze());

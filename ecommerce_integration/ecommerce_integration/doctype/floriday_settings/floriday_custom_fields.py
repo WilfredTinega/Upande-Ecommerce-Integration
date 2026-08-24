@@ -4,7 +4,6 @@
 import frappe
 from frappe.custom.doctype.custom_field.custom_field import create_custom_field
 
-
 # Specs the integration relies on, keyed by "<DocType>::<fieldname>"; each `df`
 # is passed straight to create_custom_field(dt, df).
 FLORIDAY_CUSTOM_FIELDS = [
@@ -278,3 +277,8 @@ def create_missing_floriday_custom_fields(field_ids=None):
             "errors": len(errors),
         },
     }
+
+
+def ensure_floriday_custom_fields():
+    """Create any missing Floriday custom fields. Safe to run on every migrate."""
+    return create_missing_floriday_custom_fields()

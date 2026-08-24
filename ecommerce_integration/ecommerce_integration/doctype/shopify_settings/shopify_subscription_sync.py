@@ -20,7 +20,9 @@ from ecommerce_integration.ecommerce_integration.doctype.shopify_api_error_log.s
 	flush_api_log,
 )
 from ecommerce_integration.ecommerce_integration.doctype.shopify_settings.shopify_settings import (
+	SUBSCRIPTION_CONTRACT_SCOPE,
 	get_shopify_settings,
+	scope_status,
 	shopify_datetime,
 	shopify_graphql,
 )
@@ -78,6 +80,25 @@ query ShopifyContracts($cursor: String, $pageSize: Int!) {
 """
 
 
+def _explain_abort(error):
+	"""Attach the fix to a raw GraphQL error when it is a denied scope.
+
+	Shopify's message names the field and the code but not what to do about it, and
+	ACCESS_DENIED on this query has exactly one cause worth naming. The error is
+	trimmed first so the remedy survives the summary field's own truncation.
+	"""
+	if "ACCESS_DENIED" not in error:
+		return error
+
+	return (
+		f"{error[:500]}\n\n"
+		f"The token does not carry {SUBSCRIPTION_CONTRACT_SCOPE}, which this query "
+		"requires. It is a protected scope: Shopify has to approve it, then it goes on "
+		"a new app version which must be released and re-approved by the store, before "
+		"Refresh Access Token can mint a token holding it."
+	)
+
+
 def _gid_suffix(gid):
 	"""gid://shopify/SubscriptionContract/12345 -> '12345'"""
 	return (gid or "").rsplit("/", 1)[-1]
@@ -89,6 +110,13 @@ def _resolve_customer(email, display_name, settings):
 	ERPNext keeps customer email on the linked Contact rather than on Customer, so
 	the match goes through Contact Email -> Dynamic Link.
 	"""
+	# Single-customer mode. When one Customer is configured, every order books to it and
+	# no subscriber becomes a Customer of their own — the subscriber is an Address and a
+	# Contact attached to that one account instead. Matching on email is skipped
+	# deliberately: it could only ever return a different customer.
+	if settings.default_customer:
+		return settings.default_customer
+
 	if email:
 		matched = frappe.db.sql(
 			"""
@@ -104,17 +132,136 @@ def _resolve_customer(email, display_name, settings):
 		if matched:
 			return matched[0][0]
 
-	if settings.create_missing_customer and display_name:
-		customer = frappe.new_doc("Customer")
-		customer.customer_name = display_name
-		if settings.default_customer_group:
-			customer.customer_group = settings.default_customer_group
-		if settings.default_territory:
-			customer.territory = settings.default_territory
-		customer.insert(ignore_permissions=True)
-		return customer.name
+	if settings.create_missing_customer and (display_name or email):
+		try:
+			return _create_subscriber(email, display_name, settings)
+		except Exception as e:
+			# Creation failing must not also cost the order. Fall through to the
+			# fallback customer and leave the reason on record.
+			frappe.log_error(
+				cstr(e), f"Shopify: could not create a customer for {email or display_name}"
+			)
 
 	return settings.default_customer
+
+
+def _create_subscriber(email, display_name, settings):
+	"""Create a Customer for a subscriber, and the Contact that makes them findable.
+
+	The Contact is not decoration. Resolution matches on Contact Email, so a Customer
+	created without one cannot be found again and the subscriber's next order creates
+	another — silently, because ERPNext's default naming (`cust_master_name` =
+	"Customer Name") appends a suffix to a colliding name instead of refusing it. You
+	would get "RICHARD HOBBS", "RICHARD HOBBS - 1", "- 2", one per order, and nothing
+	would look broken until someone counted.
+	"""
+	customer = frappe.new_doc("Customer")
+	# An order can carry an email with no name; the address is a poor label but a
+	# far better one than dropping the subscriber into a shared bucket.
+	customer.customer_name = cstr(display_name or email).strip()
+	if settings.default_customer_group:
+		customer.customer_group = settings.default_customer_group
+	if settings.default_territory:
+		customer.territory = settings.default_territory
+	customer.insert(ignore_permissions=True)
+
+	if email:
+		names = cstr(display_name or email).strip().split(" ", 1)
+		contact = frappe.new_doc("Contact")
+		contact.first_name = names[0]
+		if len(names) > 1:
+			contact.last_name = names[1]
+		contact.append("email_ids", {"email_id": email, "is_primary": 1})
+		contact.append("links", {"link_doctype": "Customer", "link_name": customer.name})
+		# Contact.autoname already de-duplicates its own name, so a second subscriber
+		# sharing a display name is not a collision here.
+		contact.insert(ignore_permissions=True)
+
+	return customer.name
+
+
+def _ensure_subscriber_address(customer, address, title, phone, email):
+	"""Attach the subscriber's delivery address to the customer, once.
+
+	Matched on line one plus city rather than inserted blindly: Address has no natural
+	key and its own naming quietly appends a suffix on collision, so a repeat order
+	would add another near-identical row to the same account every time.
+	"""
+	line1 = cstr((address or {}).get("address1")).strip()
+	if not customer or not line1:
+		return None
+
+	city = cstr(address.get("city")).strip() or "Unknown"
+	existing = frappe.db.sql(
+		"""
+		select a.name
+		from tabAddress a
+		inner join `tabDynamic Link` dl
+			on dl.parent = a.name and dl.parenttype = 'Address'
+		where dl.link_doctype = 'Customer' and dl.link_name = %s
+			and a.address_line1 = %s and ifnull(a.city, '') = %s
+		limit 1
+		""",
+		(customer, line1, city),
+	)
+	if existing:
+		return existing[0][0]
+
+	doc = frappe.new_doc("Address")
+	doc.address_title = cstr(title or line1)[:140]
+	doc.address_type = "Shipping"
+	doc.address_line1 = line1
+	doc.address_line2 = address.get("address2")
+	doc.city = city
+	doc.state = address.get("province")
+	doc.pincode = address.get("zip")
+	doc.phone = phone
+	doc.email_id = email
+	# Country is mandatory on Address, and Shopify sends a display name that may not be
+	# a Country record at all. Fall back to the site default rather than lose the address.
+	country = cstr(address.get("country")).strip()
+	doc.country = (
+		country if country and frappe.db.exists("Country", country) else frappe.db.get_default("country")
+	)
+	doc.append("links", {"link_doctype": "Customer", "link_name": customer})
+	doc.insert(ignore_permissions=True)
+	return doc.name
+
+
+def _ensure_subscriber_contact(customer, display_name, email, phone):
+	"""Attach the subscriber as a Contact under the customer, once, keyed on email."""
+	if not customer or not (email or display_name):
+		return None
+
+	if email:
+		matched = frappe.db.sql(
+			"""
+			select ce.parent
+			from `tabContact Email` ce
+			inner join `tabDynamic Link` dl
+				on dl.parent = ce.parent and dl.parenttype = 'Contact'
+			where ce.email_id = %s and dl.link_doctype = 'Customer' and dl.link_name = %s
+			limit 1
+			""",
+			(email, customer),
+		)
+		if matched:
+			return matched[0][0]
+
+	names = cstr(display_name or email).strip().split(" ", 1)
+	doc = frappe.new_doc("Contact")
+	doc.first_name = names[0]
+	if len(names) > 1:
+		doc.last_name = names[1]
+	if email:
+		doc.append("email_ids", {"email_id": email, "is_primary": 1})
+	if phone:
+		doc.append("phone_nos", {"phone": phone, "is_primary_mobile_no": 1})
+	doc.append("links", {"link_doctype": "Customer", "link_name": customer})
+	# Contact.autoname de-duplicates its own name, so two subscribers sharing a display
+	# name is not a collision here.
+	doc.insert(ignore_permissions=True)
+	return doc.name
 
 
 def _apply_contract(doc, node, settings):
@@ -198,6 +345,21 @@ def sync_subscription_contracts(force=False):
 		if not settings.sub_enabled:
 			return {"skipped": True, "reason": "Subscription Contract Sync is disabled"}
 
+	# Without the scope every page of this query is denied, so a run that cannot
+	# succeed makes no request at all — otherwise the hourly job spends a call and an
+	# error log per tick to learn the same thing. Only a positively-known absence
+	# blocks; "unknown" still tries, since Shopify is the authority on the token.
+	if scope_status(SUBSCRIPTION_CONTRACT_SCOPE, settings) == "missing":
+		reason = (
+			f"the Shopify app does not hold {SUBSCRIPTION_CONTRACT_SCOPE}, which "
+			"subscriptionContracts requires. This store sells no selling plans, so there "
+			"are no contracts to read either — leave Subscription Contract Sync off "
+			"unless a subscriptions app is installed."
+		)
+		settings.db_set("last_sync_summary", f"Skipped: {reason}"[:900], update_modified=False)
+		frappe.db.commit()
+		return {"skipped": True, "reason": reason, "summary": f"Skipped: {reason}"}
+
 	watermark_at_entry = (
 		get_datetime(settings.last_sync_updated_at) if settings.last_sync_updated_at else None
 	)
@@ -280,7 +442,7 @@ def sync_subscription_contracts(force=False):
 		settings.db_set("last_sync_updated_at", high_watermark, update_modified=False)
 
 	summary = (
-		aborted[:900]
+		_explain_abort(aborted)[:900]
 		if aborted
 		else f"created {created}, updated {updated}, unchanged {skipped}, failed {failed}, pages {pages}"
 	)

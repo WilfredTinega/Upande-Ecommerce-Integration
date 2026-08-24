@@ -29,6 +29,7 @@
   "order_sync_tab",
   "attr_section",
   "attr_duration",
+  "attr_plan",
   "attr_frequency",
   "attr_start_date",
   "column_break_attr",
@@ -43,6 +44,7 @@
   "ord_event_frequency",
   "ord_cron_format",
   "order_lookback_days",
+  "paid_orders_only",
   "sync_orders_now",
   "column_break_order",
   "ord_last_run",
@@ -53,6 +55,8 @@
   "allocation_tab",
   "allocation_section",
   "alloc_enabled",
+  "allocation_horizon_weeks",
+  "allocate_paid_only",
   "alloc_event_frequency",
   "alloc_cron_format",
   "generate_allocations",
@@ -170,6 +174,7 @@
   },
   {
    "default": "0",
+   "description": "Derives subscriptions from stored orders. This store sells no Shopify selling plans, so `subscriptionContracts` holds nothing to read; orders are the only place its subscriptions exist.",
    "fieldname": "sub_enabled",
    "fieldtype": "Check",
    "label": "Enabled"
@@ -188,15 +193,17 @@
    "label": "Cron Format"
   },
   {
+   "description": "Re-reads the Shopify Orders already stored and upserts a subscription for each one that is a prepaid run or an open-ended plan. No Shopify call \u2014 the orders are already here.",
    "fieldname": "sync_now",
    "fieldtype": "Button",
-   "label": "Sync Now"
+   "label": "Derive Subscriptions Now"
   },
   {
    "fieldname": "column_break_sync",
    "fieldtype": "Column Break"
   },
   {
+   "description": "Only used by the dormant `subscriptionContracts` path. The order-derived rebuild reads stored orders, so it has no watermark of its own.",
    "fieldname": "last_sync_updated_at",
    "fieldtype": "Datetime",
    "label": "Sync Watermark"
@@ -351,9 +358,10 @@
    "options": "Company"
   },
   {
+   "description": "The single ERPNext Customer every order is booked to. Subscribers are not customers in their own right: each one becomes a Shipping Address and a Contact attached to this customer, so one account carries the books while deliveries still carry the subscriber's own name, phone and address. Leave blank to fall back to matching or creating a Customer per subscriber instead.",
    "fieldname": "default_customer",
    "fieldtype": "Link",
-   "label": "Fallback Customer",
+   "label": "Customer",
    "options": "Customer"
   },
   {
@@ -512,7 +520,7 @@
   {
    "fieldname": "subscription_tab",
    "fieldtype": "Tab Break",
-   "label": "Subscription Sync"
+   "label": "Subscriptions"
   },
   {
    "fieldname": "settings_and_connection_tab",
@@ -733,6 +741,33 @@
   {
    "fieldname": "column_break_cjud",
    "fieldtype": "Column Break"
+  },
+  {
+   "default": "1",
+   "description": "Only pull orders Shopify reports as PAID, filtered server-side so unpaid ones never spend page budget. An order that is paid later has its updated_at bumped, so the next incremental run picks it up on its own. Note this matches PAID exactly: a refund moves an order to REFUNDED or PARTIALLY_REFUNDED and it stops being returned, though a copy already stored is kept.",
+   "fieldname": "paid_orders_only",
+   "fieldtype": "Check",
+   "label": "Paid Orders Only"
+  },
+  {
+   "description": "The attribute naming what was sold \u2014 observed values on this store are Subscription, Ongoing, Pay upfront, \"Gift, N boxes over N months\", One time purchase. It is the only thing separating an open-ended subscription from a prepaid run: a Seal \"Subscription\" order carries no delivery count, so counting attributes alone reads it as a one-off. Usually \"Plan\".",
+   "fieldname": "attr_plan",
+   "fieldtype": "Data",
+   "label": "Plan Attribute"
+  },
+  {
+   "default": "8",
+   "description": "How far ahead to raise draft allocations for an open-ended subscription, which has no delivery count to work through. Topped up on every run, so the window rolls forward. Past dates are never backfilled \u2014 only today onwards.",
+   "fieldname": "allocation_horizon_weeks",
+   "fieldtype": "Int",
+   "label": "Allocation Horizon (Weeks)"
+  },
+  {
+   "default": "1",
+   "description": "Raise allocations only for orders Shopify reports as PAID. Independent of Paid Orders Only on the Order Sync tab, and the two are meant to differ: pull everything so the subscription list is complete, then commit stock to nothing that has not been paid for. An order paid later is picked up on the next run, since this is re-checked every time rather than recorded once.",
+   "fieldname": "allocate_paid_only",
+   "fieldtype": "Check",
+   "label": "Allocate Paid Orders Only"
   }
  ],
  "index_web_pages_for_search": 1,

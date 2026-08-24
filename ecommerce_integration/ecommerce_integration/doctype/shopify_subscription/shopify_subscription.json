@@ -17,6 +17,7 @@
   "interval",
   "interval_count",
   "delivery_day",
+  "delivery_days",
   "column_break_billing",
   "next_billing_date",
   "last_billing_date",
@@ -41,6 +42,7 @@
   "schedule_section",
   "start_date",
   "end_date",
+  "is_open_ended",
   "deliveries_total",
   "column_break_schedule",
   "deliveries_completed",
@@ -361,6 +363,19 @@
    "fieldname": "special_requests",
    "fieldtype": "Small Text",
    "label": "Special Requests"
+  },
+  {
+   "description": "Runs until cancelled. Deliveries Total stays 0, End Date stays blank, and the expiry job leaves it Active \u2014 it has no purchased quantity to exhaust.",
+   "fieldname": "is_open_ended",
+   "fieldtype": "Check",
+   "label": "Open-Ended",
+   "read_only": 1
+  },
+  {
+   "description": "Weekday names, comma separated \u2014 \"Monday, Thursday\" with a Weekly cadence is how twice a week is expressed. Seeded from the first delivery's own weekday when the subscription is derived, then yours to edit. Left blank, deliveries fall one per period stepping from the start date, which is the original behaviour. Ignored for a Monthly cadence, where a weekday has no meaning.",
+   "fieldname": "delivery_days",
+   "fieldtype": "Data",
+   "label": "Delivery Days"
   }
  ],
  "index_web_pages_for_search": 1,

@@ -3,7 +3,7 @@
 
 import frappe
 from frappe.model.document import Document
-from frappe.utils import flt
+from frappe.utils import cint, cstr, flt, nowdate
 
 
 class ShopifyAllocation(Document):
@@ -81,6 +81,157 @@ class ShopifyAllocation(Document):
 		self._set_order_status("Shipped")
 		return self.status
 
+	@frappe.whitelist()
+	def create_pick_list(self):
+		"""Raise an Upande Tambuzi `Order Pick List` for what this allocation reserved.
+
+		Only after submitting: before that the lines are a proposal, and the reservation
+		Stock Entry that proves the stock is really there does not exist yet.
+
+		The OPL is the Tambuzi app's, not ours — no doctype is defined here. Its
+		`locations` table is ERPNext's `Pick List Item` carrying Tambuzi's own additions,
+		so each row gets `warehouse` and `custom_source_warehouse` set to the warehouse
+		the stock was actually found in, `qty` as bunches and `stock_qty` as stems, which
+		is what those fields are labelled on that site.
+		"""
+		self._require_tambuzi_packing()
+
+		if self.docstatus != 1:
+			frappe.throw("Submit the allocation before raising a pick list.")
+		if self.status == "Cancelled":
+			frappe.throw("This allocation is cancelled.")
+
+		existing = self._existing_pick_list()
+		if existing:
+			frappe.throw(f"{self.name} already has a pick list: {existing}.")
+
+		ensure_packing_link_fields()
+		settings = frappe.get_cached_doc("Shopify Settings")
+
+		pick = frappe.new_doc("Order Pick List")
+		pick.custom_shopify_allocation = self.name
+		pick.customer = self.customer
+		pick.source_warehouse = self.source_warehouse
+		# Stock leaves for a customer delivery rather than into production.
+		pick.purpose = "Delivery"
+		pick.date_created = nowdate()
+		pick.custom_address = self.shipping_address
+		pick.custom_comment = f"Shopify delivery {self.delivery_index} of {self.deliveries_total or '∞'}"
+
+		total_stems = 0
+		for row in self.items:
+			if not flt(row.qty):
+				continue
+			warehouse = row.warehouse or self.source_warehouse
+			stems = self._stems_for(row)
+			total_stems += stems
+			pick.append(
+				"locations",
+				{
+					"item_code": row.item_code,
+					"item_name": row.item_name,
+					"warehouse": warehouse,
+					# Where it was available, not where the allocation defaulted to.
+					"custom_source_warehouse": warehouse,
+					"qty": flt(row.qty),
+					"stock_qty": stems,
+					"uom": row.uom,
+					"actual_qty": flt(row.available_qty),
+				},
+			)
+		if not pick.locations:
+			frappe.throw("This allocation has no allocated quantity to pick.")
+
+		# Data field on that site, not an Int.
+		pick.custom_total_stems = cstr(total_stems)
+		pick.insert(ignore_permissions=True)
+		return pick.name
+
+	@frappe.whitelist()
+	def create_farm_pack_list(self):
+		"""Turn this allocation's submitted pick list into a `Farm Pack List`.
+
+		`Farm Pack List.custom_order_pick_list` is mandatory there, so the pick list has
+		to exist and be submitted first. Its `pack_list_item` rows are `Dispatch Form
+		Item`, which is a different shape again — bunches and stems rather than qty.
+		"""
+		self._require_tambuzi_packing()
+
+		pick_name = self._existing_pick_list(submitted_only=True)
+		if not pick_name:
+			frappe.throw("Raise and submit the pick list before packing it.")
+
+		already = frappe.db.exists(
+			"Farm Pack List", {"custom_order_pick_list": pick_name, "docstatus": ["<", 2]}
+		)
+		if already:
+			frappe.throw(f"{pick_name} is already packed on {already}.")
+
+		pick = frappe.get_doc("Order Pick List", pick_name)
+		settings = frappe.get_cached_doc("Shopify Settings")
+
+		pack = frappe.new_doc("Farm Pack List")
+		pack.custom_order_pick_list = pick_name
+		pack.company = settings.default_company
+		# Data fields on that site rather than Links, so the names are written straight in.
+		pack.custom_customer = cstr(self.customer)
+		pack.custom_customer_address = cstr(self.shipping_address)
+		pack.custom_total_stems = cint(pick.custom_total_stems)
+
+		for row in pick.locations:
+			pack.append(
+				"pack_list_item",
+				{
+					"item_code": row.item_code,
+					"source_warehouse": row.custom_source_warehouse or row.warehouse,
+					"bunch_uom": row.uom,
+					"bunch_qty": cint(flt(row.qty)),
+					"stock_qty": cint(flt(row.stock_qty)),
+					"custom_number_of_stems": cint(flt(row.stock_qty)),
+					"no_of_boxes": 1,
+					"custom_opl_id": pick_name,
+					"customer_id": self.customer,
+				},
+			)
+		if not pack.pack_list_item:
+			frappe.throw(f"{pick_name} has no picked lines to pack.")
+
+		pack.insert(ignore_permissions=True)
+		return pack.name
+
+	def _existing_pick_list(self, submitted_only=False):
+		filters = {"custom_shopify_allocation": self.name}
+		filters["docstatus"] = 1 if submitted_only else ["<", 2]
+		return frappe.db.exists("Order Pick List", filters)
+
+	def _require_tambuzi_packing(self):
+		"""The packing chain belongs to the Upande Tambuzi app.
+
+		Nothing here defines those doctypes, so on a site without that app this is a
+		clear message rather than a stack trace about a missing table.
+		"""
+		missing = [
+			dt for dt in ("Order Pick List", "Farm Pack List") if not frappe.db.exists("DocType", dt)
+		]
+		if missing:
+			frappe.throw(
+				f"{', '.join(missing)} is not on this site. Picking and packing live in the "
+				"Upande Tambuzi app — install it here before raising a pick list."
+			)
+
+	def _stems_for(self, row):
+		"""Stems this line represents, from the Product Map's stems per box.
+
+		Read through the item rather than the variant: the allocation records what is
+		being sent, and more than one variant can map to the same box item.
+		"""
+		if not row.item_code:
+			return 0
+		stems_per_box = frappe.db.get_value(
+			"Shopify Product Map", {"box_item": row.item_code, "enabled": 1}, "stems_per_box"
+		)
+		return cint(cint(stems_per_box) * flt(row.qty))
+
 	# ------------------------------------------------------------------ internals
 
 	def _set_order_status(self, status):
@@ -93,7 +244,16 @@ class ShopifyAllocation(Document):
 			update_modified=False,
 		)
 
-	def _refresh_order_state(self):
+	def on_trash(self):
+		"""A deleted allocation must not leave the order pointing at it.
+
+		`Shopify Order.allocation` is a Link, so a stale pointer makes every later save
+		of that order fail link validation — which is exactly what a bulk clear-out with
+		`force=True` causes, since that skips the outgoing link check.
+		"""
+		self._refresh_order_state(exclude_self=True)
+
+	def _refresh_order_state(self, exclude_self=False):
 		"""Recompute the order's status from its live allocations.
 
 		A multi-delivery order has one allocation per delivery, so cancelling the
@@ -103,9 +263,14 @@ class ShopifyAllocation(Document):
 		if not self.shopify_order:
 			return
 
+		filters = [["shopify_order", "=", self.shopify_order], ["docstatus", "<", 2]]
+		if exclude_self:
+			# on_trash runs before the row goes, so this one is still visible to the query.
+			filters.append(["name", "!=", self.name])
+
 		siblings = frappe.get_all(
 			"Shopify Allocation",
-			filters=[["shopify_order", "=", self.shopify_order], ["docstatus", "<", 2]],
+			filters=filters,
 			fields=["name", "status", "delivery_index"],
 			order_by="delivery_index asc",
 		)
@@ -179,3 +344,33 @@ class ShopifyAllocation(Document):
 		if entry.docstatus == 1:
 			entry.flags.ignore_permissions = True
 			entry.cancel()
+
+
+def ensure_packing_link_fields():
+	"""One custom field so an Order Pick List knows which allocation raised it.
+
+	`Order Pick List` has `sales_order` and nothing else to reference, and this
+	connector raises no Sales Order — without a link there is no way to find the pick
+	list for an allocation, or to stop a second one being raised. A single Link field
+	is the whole footprint this app leaves on the Tambuzi app's doctype; idempotent, so
+	it can be called on every use.
+	"""
+	if not frappe.db.exists("DocType", "Order Pick List"):
+		return
+	if frappe.db.exists("Custom Field", {"dt": "Order Pick List", "fieldname": "custom_shopify_allocation"}):
+		return
+
+	frappe.get_doc(
+		{
+			"doctype": "Custom Field",
+			"dt": "Order Pick List",
+			"fieldname": "custom_shopify_allocation",
+			"label": "Shopify Allocation",
+			"fieldtype": "Link",
+			"options": "Shopify Allocation",
+			"read_only": 1,
+			"insert_after": "sales_order",
+			"description": "Set when the pick list is raised from a Shopify allocation "
+			"instead of a Sales Order.",
+		}
+	).insert(ignore_permissions=True)

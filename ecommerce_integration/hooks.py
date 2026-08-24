@@ -56,8 +56,8 @@ use_json_request_body = True
 # `upande_webshop.*` client globals the settings forms call). Copied from
 # upande_webshop; the server methods it xcalls still live in upande_webshop.
 doctype_js = {
-    "Biflorica Setting": "public/js/shelf_move.js",
-    "Floriday Settings": "public/js/shelf_move.js",
+	"Biflorica Setting": "public/js/shelf_move.js",
+	"Floriday Settings": "public/js/shelf_move.js",
 }
 # doctype_js = {"doctype" : "public/js/doctype.js"}
 # doctype_list_js = {"doctype" : "public/js/doctype_list.js"}
@@ -104,23 +104,19 @@ doctype_js = {
 # before_install = "ecommerce_integration.install.before_install"
 after_install = "ecommerce_integration.setup.install.after_install"
 
-# after_migrate runs in this order:
-#   1. resync_app_resources — force-reload the JSON resources we ship (workspace,
-#      doctypes, ...) bypassing Frappe's modified-timestamp skip.
-#   2. normalize_ecommerce_workspace — keep the "Ecommerce" workspace's
-#      name/title/label consistent and parent_page clear so /app/ecommerce opens.
-#   3. Floriday + Biflorica resync_scheduled_jobs — restore Scheduled Job Type
-#      rows (user-configured per Settings doc, not in scheduler_events) that
-#      Frappe's scheduler sync prunes on migrate.
-#   4. ensure_biflorica_custom_fields — re-apply Biflorica custom field defs.
-after_migrate = [
-    "ecommerce_integration.setup.install.resync_app_resources",
-    "ecommerce_integration.setup.install.normalize_ecommerce_workspace",
-    "ecommerce_integration.ecommerce_integration.doctype.floriday_settings.floriday_settings.resync_scheduled_jobs",
-    "ecommerce_integration.ecommerce_integration.doctype.biflorica_setting.biflorica_setting.resync_scheduled_jobs",
-    "ecommerce_integration.ecommerce_integration.doctype.biflorica_setting.biflorica_custom_fields.ensure_biflorica_custom_fields",
-    "ecommerce_integration.ecommerce_integration.doctype.shopify_settings.shopify_settings.resync_scheduled_jobs",
-]
+# One entry point, so install and migrate apply the exact same set of steps and a
+# failure in any one of them is logged instead of aborting the rest. See
+# ecommerce_integration/setup/install.py for the ordered list, which covers:
+#   * force-reloading every JSON resource the app ships (doctypes, workspace,
+#     workspace sidebar, desktop icon) past Frappe's timestamp/hash skip;
+#   * normalising the Ecommerce workspace identity so /app/ecommerce opens;
+#   * collapsing duplicate Desk tiles down to the single icon the app ships;
+#   * re-upserting the per-Settings Scheduled Job Type rows that Frappe's
+#     scheduler sync prunes on every migrate;
+#   * re-applying the Floriday / Biflorica / Shopify custom fields this app adds
+#     to other apps' doctypes;
+#   * re-asserting the Shopify API log retention in Frappe's Log Settings.
+after_migrate = "ecommerce_integration.setup.install.after_migrate"
 
 # Uninstallation
 # ------------
@@ -173,11 +169,11 @@ after_migrate = [
 # Hook on document methods and events
 
 doc_events = {
-    "Sales Order": {
-        "on_submit": [
-            "ecommerce_integration.ecommerce_integration.doctype.biflorica_setting.biflorica_setting.confirm_biflorica_predeal_on_submit",
-        ],
-    },
+	"Sales Order": {
+		"on_submit": [
+			"ecommerce_integration.ecommerce_integration.doctype.biflorica_setting.biflorica_setting.confirm_biflorica_predeal_on_submit",
+		],
+	},
 }
 
 # Scheduled Tasks
@@ -291,11 +287,10 @@ require_type_annotated_api_methods = False
 # cleared automatically. The retention shown here is only the seeded default —
 # Shopify Settings > Keep Logs For (Days) writes the live value into Log Settings.
 default_log_clearing_doctypes = {
-    "Shopify API Error Log": 30,
+	"Shopify API Error Log": 30,
 }
 
 # Translation
 # ------------
 # List of apps whose translatable strings should be excluded from this app's translations.
 # ignore_translatable_strings_from = []
-

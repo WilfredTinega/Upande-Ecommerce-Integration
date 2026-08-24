@@ -18,7 +18,7 @@ import json
 import re
 
 import frappe
-from frappe.utils import add_days, cint, cstr, flt, get_datetime, getdate, now_datetime
+from frappe.utils import add_days, cint, cstr, flt, get_datetime, get_weekday, getdate, now_datetime
 
 from ecommerce_integration.ecommerce_integration.doctype.shopify_api_error_log.shopify_api_error_log import (
 	flush_api_log,
@@ -106,8 +106,10 @@ def _parse_frequency(text, default="Monthly"):
 
 	for word, value in (("fortnight", "Fortnightly"), ("week", "Weekly"), ("month", "Monthly")):
 		if word in raw:
-			# "every 2 weeks" is fortnightly, not weekly.
-			if value == "Weekly" and re.search(r"\b2\b", raw):
+			# "every 2 weeks", "every other week" and "biweekly" all mean fortnightly, and
+			# the word "week" is in each of them — so a plain substring match on "week"
+			# would halve every one of those cadences.
+			if value == "Weekly" and re.search(r"\b(2|other|alternate|bi-?weekly)\b", raw):
 				return "Fortnightly"
 			return value
 
@@ -120,6 +122,32 @@ def _parse_frequency(text, default="Monthly"):
 		return "Monthly"
 
 	return default
+
+
+PLAN_OPEN_ENDED = ("subscription", "ongoing")
+PLAN_ONE_OFF = ("one time", "one-time")
+
+
+def _plan_kind(plan_text, duration):
+	"""Classify the sale: "Open-ended", "Fixed" or "One-off".
+
+	A delivery count decides it when there is one. Where there isn't, only the
+	storefront's own `Plan` label separates an open-ended subscription from a single
+	box — a Seal "Subscription" order carries no count at all, so counting attributes
+	alone reads an indefinite subscriber as a one-off purchase and they never get a
+	subscription record. "One time" is checked before the open-ended words because
+	"One-time gift box" contains neither, but a future label like "One time
+	subscription box" would contain both.
+	"""
+	text = cstr(plan_text).strip().lower()
+
+	if cint(duration) > 1:
+		return "Fixed"
+	if any(word in text for word in PLAN_ONE_OFF):
+		return "One-off"
+	if any(word in text for word in PLAN_OPEN_ENDED):
+		return "Open-ended"
+	return "One-off"
 
 
 def _maybe_date(text):
@@ -157,9 +185,18 @@ class _Attributes:
 		)
 
 	def get(self, configured_name):
-		if not configured_name:
-			return None
-		return self.flat.get(cstr(configured_name).strip().lower())
+		"""First match wins across a comma-separated list of candidate names.
+
+		Seal states the same fact under several keys and not consistently per order —
+		`_frequency_days` appears on 4 of 44 orders while `Frequency` appears on 27 — so
+		a single configured name silently defaults most of them, and the cadence a
+		subscriber actually chose is lost without anything looking wrong.
+		"""
+		for candidate in cstr(configured_name).split(","):
+			candidate = candidate.strip().lower()
+			if candidate and candidate in self.flat:
+				return self.flat[candidate]
+		return None
 
 
 def _collect_attributes(node):
@@ -201,7 +238,14 @@ def _apply_order(doc, node, settings, attributes):
 		_resolve_customer,
 	)
 
-	doc.customer = _resolve_customer(doc.customer_email, shopify_customer.get("displayName"), settings)
+	# `or doc.customer` matters: resolution can come back empty (no Contact match, no
+	# fallback set) and this runs again on every update to the order, so assigning it
+	# unconditionally would wipe a customer somebody linked by hand.
+	doc.customer = (
+		_resolve_customer(doc.customer_email, shopify_customer.get("displayName"), settings)
+		or doc.customer
+	)
+
 
 	total = ((node.get("currentTotalPriceSet") or {}).get("shopMoney")) or {}
 	if total.get("currencyCode"):
@@ -222,6 +266,22 @@ def _apply_order(doc, node, settings, attributes):
 	doc.recipient_phone = attributes.get(settings.attr_recipient_phone) or address.get("phone")
 	doc.recipient_email = None
 
+	# One customer carries the books; the subscriber is an Address and a Contact under
+	# it, so a delivery still goes out in their name to their door.
+	if doc.customer:
+		from ecommerce_integration.ecommerce_integration.doctype.shopify_settings.shopify_subscription_sync import (
+			_ensure_subscriber_address,
+			_ensure_subscriber_contact,
+		)
+
+		subscriber = cstr(shopify_customer.get("displayName")).strip() or shipped_to
+		doc.customer_address = _ensure_subscriber_address(
+			doc.customer, address, subscriber, address.get("phone"), doc.customer_email
+		)
+		doc.subscriber_contact = _ensure_subscriber_contact(
+			doc.customer, subscriber, doc.customer_email, address.get("phone")
+		)
+
 	buyer = cstr(shopify_customer.get("displayName")).strip().lower()
 	# A gift is an order shipping to someone other than the buyer.
 	doc.is_gift = 1 if (doc.recipient_name and doc.recipient_name.strip().lower() != buyer) else 0
@@ -238,7 +298,14 @@ def _apply_order(doc, node, settings, attributes):
 	start = _maybe_date(attributes.get(settings.attr_start_date))
 	doc.first_delivery_date = start or getdate(shopify_datetime(node.get("createdAt")))
 	doc.start_date = doc.first_delivery_date
-	doc.end_date = end_date_for(doc.start_date, doc.frequency, doc.duration_boxes)
+	doc.plan_label = attributes.get(settings.attr_plan)
+	kind = _plan_kind(doc.plan_label, doc.duration_boxes)
+	doc.is_open_ended = 1 if kind == "Open-ended" else 0
+
+	# An open-ended subscription has no last delivery. Left to end_date_for with a
+	# count of 1 it would get an end date equal to its start date, and the expiry job
+	# would retire it the day after it began.
+	doc.end_date = None if doc.is_open_ended else end_date_for(doc.start_date, doc.frequency, doc.duration_boxes)
 	if not doc.requested_delivery_date:
 		doc.requested_delivery_date = doc.first_delivery_date
 
@@ -290,7 +357,9 @@ def _upsert_subscription(order, settings):
 	Named SHOP-SUB-ORD<order id> so it shares the Shopify Subscription doctype with
 	contract-sourced records without colliding with a real contract id.
 	"""
-	if cint(order.duration_boxes) <= 1:
+	# A prepaid run of boxes, or an indefinite subscription. Both are subscriptions;
+	# only a genuine single purchase is not.
+	if cint(order.duration_boxes) <= 1 and not cint(order.is_open_ended):
 		return None
 
 	synthetic_id = f"ORD{order.shopify_order_id}"
@@ -308,8 +377,12 @@ def _upsert_subscription(order, settings):
 	doc.customer_email = order.customer_email
 	doc.currency = order.currency
 	doc.start_date = order.start_date
-	doc.end_date = order.end_date
-	doc.deliveries_total = cint(order.duration_boxes)
+	doc.is_open_ended = cint(order.is_open_ended)
+	# No end date and no purchased quantity is what keeps the expiry job's hands off
+	# an open-ended subscription: it retires on a past end date or on every purchased
+	# delivery having shipped, and this has neither.
+	doc.end_date = None if doc.is_open_ended else order.end_date
+	doc.deliveries_total = 0 if doc.is_open_ended else cint(order.duration_boxes)
 	doc.next_billing_date = order.first_delivery_date
 	doc.is_gift = order.is_gift
 	doc.recipient_name = order.recipient_name
@@ -321,6 +394,12 @@ def _upsert_subscription(order, settings):
 	# Status is owned by the expiry job from here on; only set it on creation.
 	if doc.is_new():
 		doc.status = "Active"
+		# Seed the delivery weekday from the first delivery itself, so a subscription
+		# schedules sensibly before anyone touches it. Only on creation: this is the one
+		# field on here a human is expected to change (adding a second day makes it twice
+		# a week), and a rebuild must not undo that.
+		if order.first_delivery_date:
+			doc.delivery_days = get_weekday(getdate(order.first_delivery_date))
 
 	doc.set("boxes", [])
 	for line in order.items:
@@ -348,6 +427,97 @@ def _upsert_subscription(order, settings):
 			"Shopify Order", order.name, {"shopify_subscription": doc.name}, update_modified=False
 		)
 	return doc.name
+
+
+@frappe.whitelist()
+def reapply_stored_orders():
+	"""Re-parse every stored order's kept payload with the current settings.
+
+	A change to the attribute mapping or to the plan rules cannot be picked up by
+	re-syncing — an order unchanged on Shopify is never re-applied, whatever the
+	watermark says. It does not need to be: each order keeps its Shopify node verbatim
+	in `shopify_payload`, so the whole thing can be re-read under the current mapping
+	without one API call. This is the counterpart to changing a mapping field, and
+	subscriptions are re-derived in the same pass since the terms may have moved.
+	"""
+	settings = get_shopify_settings()
+	orders = frappe.get_all("Shopify Order", fields=["name"], order_by="order_date asc")
+	updated = no_payload = failed = 0
+
+	for row in orders:
+		try:
+			doc = frappe.get_doc("Shopify Order", row.name)
+			if not doc.shopify_payload:
+				no_payload += 1
+				continue
+
+			node = json.loads(doc.shopify_payload)
+			_apply_order(doc, node, settings, _collect_attributes(node))
+			doc.save(ignore_permissions=True)
+			_upsert_subscription(doc, settings)
+			frappe.db.commit()
+			updated += 1
+		except Exception as e:
+			failed += 1
+			frappe.db.rollback()
+			frappe.log_error(cstr(e), f"Shopify Order Reapply: {row.name}")
+
+	summary = f"orders re-read {updated}, without a payload {no_payload}, failed {failed}"
+	settings.db_set("last_order_sync_summary", summary[:900], update_modified=False)
+	frappe.db.commit()
+
+	return {"summary": summary, "updated": updated, "unchanged": no_payload, "failed": failed}
+
+
+@frappe.whitelist()
+def rebuild_subscriptions_from_orders(force=False):
+	"""Derive Shopify Subscriptions from the orders already stored.
+
+	This is what the `sub` job runs, in place of the `subscriptionContracts` query.
+	Subscriptions on this store exist only as orders — no selling plans, so no
+	contracts — and the orders are already here, so deriving them costs no Shopify
+	call at all. Being idempotent, it is also how to re-derive everything after the
+	classification rules change, without re-pulling from Shopify (which would not
+	work anyway: an order unchanged on Shopify is never re-applied).
+	"""
+	settings = get_shopify_settings()
+
+	if not force:
+		if not settings.enabled:
+			return {"skipped": True, "reason": "Shopify Settings is not enabled"}
+		if not settings.sub_enabled:
+			return {"skipped": True, "reason": "Subscription Sync is disabled"}
+
+	orders = frappe.get_all("Shopify Order", fields=["name"], order_by="order_date asc")
+	derived = one_off = failed = 0
+
+	for row in orders:
+		try:
+			order = frappe.get_doc("Shopify Order", row.name)
+			if _upsert_subscription(order, settings):
+				derived += 1
+			else:
+				one_off += 1
+			# Per order, so one bad payload cannot roll back the whole rebuild.
+			frappe.db.commit()
+		except Exception as e:
+			failed += 1
+			frappe.db.rollback()
+			frappe.log_error(cstr(e), f"Shopify Subscription Rebuild: {row.name}")
+
+	summary = (
+		f"subscriptions derived {derived}, single purchases skipped {one_off}, "
+		f"failed {failed}, orders read {len(orders)}"
+	)
+	settings.db_set("last_sync_summary", summary[:900], update_modified=False)
+	frappe.db.commit()
+
+	return {
+		"summary": summary,
+		"created": derived,
+		"unchanged": one_off,
+		"failed": failed,
+	}
 
 
 @frappe.whitelist()
@@ -383,6 +553,11 @@ def sync_orders(force=False):
 		# the last 60 days anyway.
 		since = add_days(now_datetime(), -(cint(settings.order_lookback_days) or 30))
 	order_filter = f"updated_at:>='{to_shopify_utc(since)}'"
+	if cint(settings.paid_orders_only):
+		# Server-side, so unpaid orders never consume a page of the 25 this pulls at a
+		# time. An order paid later gets its updated_at bumped by Shopify, so the next
+		# incremental run collects it without any special handling here.
+		order_filter += " AND financial_status:paid"
 
 	cursor = None
 	has_next = True
@@ -410,6 +585,13 @@ def sync_orders(force=False):
 			node = edge.get("node") or {}
 			order_id = _gid_suffix(node.get("id"))
 			if not order_id:
+				continue
+
+			# Belt and braces: Shopify's search syntax is not versioned the way the schema
+			# is, so a term that silently stops matching would otherwise let unpaid orders
+			# through unnoticed.
+			if cint(settings.paid_orders_only) and cstr(node.get("displayFinancialStatus")).upper() != "PAID":
+				skipped += 1
 				continue
 
 			remote_updated = shopify_datetime(node.get("updatedAt"))

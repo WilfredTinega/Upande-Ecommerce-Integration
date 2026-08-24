@@ -17,9 +17,12 @@ DEFAULT_API_VERSION = "2026-07"
 # Biflorica use, so the three connectors behave identically on the scheduler side.
 SCHEDULER_TASKS = [
 	(
+		# Derived from stored orders, not from `subscriptionContracts`: this store sells
+		# no selling plans, so Shopify holds no contracts to read. The contract sync is
+		# still in the tree for a store that does, but nothing schedules it.
 		"sub",
-		"ecommerce_integration.ecommerce_integration.doctype.shopify_settings.shopify_subscription_sync.sync_subscription_contracts",
-		"Shopify: Sync Subscription Contracts",
+		"ecommerce_integration.ecommerce_integration.doctype.shopify_settings.shopify_order_pull.rebuild_subscriptions_from_orders",
+		"Shopify: Derive Subscriptions from Orders",
 	),
 	(
 		"ord",
@@ -49,6 +52,13 @@ DEFAULT_TOKEN_BUFFER_MINUTES = 120
 # exactly the scopes the *app* is configured for, so this is checked against the
 # grant response rather than assumed.
 REQUIRED_SCOPES = ("read_orders", "read_products", "read_customers")
+
+# Optional, and deliberately NOT in REQUIRED_SCOPES: the connector works fine
+# without it, so its absence must not raise the "missing scopes" warning. It gates
+# exactly one query, the `subscriptionContracts` connection, which Shopify refuses
+# outright without it. Protected scope — Shopify must approve it before an app
+# version can even request it.
+SUBSCRIPTION_CONTRACT_SCOPE = "read_own_subscription_contracts"
 
 # Fallback cadence per task. A field default only applies to a newly created doc,
 # so on an existing Shopify Settings a freshly shipped `<prefix>_event_frequency`
@@ -273,6 +283,17 @@ class ShopifySettings(Document):
 
 	@frappe.whitelist()
 	def sync_now(self):
+		"""Re-derive subscriptions from the orders already stored — no Shopify call."""
+		from ecommerce_integration.ecommerce_integration.doctype.shopify_settings.shopify_order_pull import (
+			rebuild_subscriptions_from_orders,
+		)
+
+		return rebuild_subscriptions_from_orders(force=True)
+
+	@frappe.whitelist()
+	def sync_contracts_now(self):
+		"""The `subscriptionContracts` path, kept for a store that uses selling plans.
+		Nothing schedules it; it skips itself when the scope is not granted."""
 		from ecommerce_integration.ecommerce_integration.doctype.shopify_settings.shopify_subscription_sync import (
 			sync_subscription_contracts,
 		)
@@ -317,20 +338,18 @@ class ShopifySettings(Document):
 			generate_allocations,
 		)
 		from ecommerce_integration.ecommerce_integration.doctype.shopify_settings.shopify_order_pull import (
+			rebuild_subscriptions_from_orders,
 			sync_orders,
 		)
 		from ecommerce_integration.ecommerce_integration.doctype.shopify_settings.shopify_subscription_lifecycle import (
 			expire_subscriptions,
 		)
-		from ecommerce_integration.ecommerce_integration.doctype.shopify_settings.shopify_subscription_sync import (
-			sync_subscription_contracts,
-		)
 
 		steps = [
 			("Refresh token", lambda: refresh_access_token_if_due(force=True)),
 			("Product map", seed_product_map),
-			("Subscription contracts", lambda: sync_subscription_contracts(force=True)),
 			("Orders", lambda: sync_orders(force=True)),
+			("Subscriptions", lambda: rebuild_subscriptions_from_orders(force=True)),
 			("Allocations", lambda: generate_allocations(force=True)),
 			("Expiry", lambda: expire_subscriptions(force=True)),
 		]
@@ -572,6 +591,25 @@ def missing_scopes(settings=None):
 		if scope not in granted and implied_by_write not in granted:
 			missing.append(scope)
 	return missing
+
+
+def scope_status(scope, settings=None):
+	"""Whether the installed app holds `scope`: "granted", "missing" or "unknown".
+
+	"unknown" carries as much weight as the other two. `granted_scopes` is only
+	populated by fetch_granted_scopes(), so a Settings doc nobody has tested yet
+	knows nothing about its own permissions — callers must not read that silence as
+	a denial and refuse to run. Shopify is the authority; a real request is how you
+	find out.
+	"""
+	settings = settings or get_shopify_settings()
+	granted = {s.strip() for s in (settings.granted_scopes or "").split(",") if s.strip()}
+
+	if not granted:
+		return "unknown"
+	if scope in granted or scope.replace("read_", "write_", 1) in granted:
+		return "granted"
+	return "missing"
 
 
 def refresh_access_token(settings=None):
@@ -851,4 +889,19 @@ def resync_scheduled_jobs():
 		return
 	settings = get_shopify_settings()
 	settings._sync_scheduled_jobs(force=True)
+	frappe.db.commit()
+
+
+def ensure_log_retention():
+	"""after_migrate hook — re-assert the Shopify API log retention in Frappe's
+	Log Settings.
+
+	`_sync_log_retention` only fires on Shopify Settings save, and `Log Settings`
+	is site data: a row dropped there (or a site restored from a backup taken
+	before the field was set) leaves Shopify API Error Log growing unbounded with
+	nothing in the form to indicate it."""
+	if not frappe.db.exists("DocType", "Shopify Settings"):
+		return
+	settings = get_shopify_settings()
+	settings._sync_log_retention()
 	frappe.db.commit()
