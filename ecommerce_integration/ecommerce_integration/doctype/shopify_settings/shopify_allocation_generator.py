@@ -12,6 +12,7 @@ decision for the sales team rather than for a scheduler.
 import json
 
 import frappe
+from frappe import _
 from frappe.utils import add_days, cint, cstr, flt, getdate, nowdate
 
 from ecommerce_integration.ecommerce_integration.doctype.shopify_settings.shopify_settings import (
@@ -227,7 +228,7 @@ def create_allocations_for_subscription(subscription_name, settings=None):
 
 
 @frappe.whitelist()
-def generate_allocations(force=False):
+def generate_allocations(force: bool = False):
 	settings = get_shopify_settings()
 
 	if not force:
@@ -239,9 +240,9 @@ def generate_allocations(force=False):
 	# Both warehouses are mandatory on the allocation, so fail once here rather than
 	# logging one identical error per order.
 	if not settings.default_source_warehouse:
-		frappe.throw("Shopify Settings: set a Default Source Warehouse before generating allocations.")
+		frappe.throw(_("Shopify Settings: set a Default Source Warehouse before generating allocations."))
 	if not settings.default_reserve_warehouse:
-		frappe.throw("Shopify Settings: set a Default Reserve Warehouse before generating allocations.")
+		frappe.throw(_("Shopify Settings: set a Default Reserve Warehouse before generating allocations."))
 
 	# Fee-only orders (delivery fees, packaging) carry no boxes and are skipped.
 	order_filters = [
@@ -306,6 +307,8 @@ def generate_allocations(force=False):
 	if errors:
 		summary += " | " + "; ".join(errors[:3])
 	settings.db_set("last_allocation_summary", summary[:900], update_modified=False)
-	frappe.db.commit()
+	# Background sync: persist the records written above and the summary field
+	# the form reads, so a later failure cannot discard a completed run.
+	frappe.db.commit()  # nosemgrep: frappe-manual-commit
 
 	return {"summary": summary, "created": created, "complete": complete, "failed": failed}

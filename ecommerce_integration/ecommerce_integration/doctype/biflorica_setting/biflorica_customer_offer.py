@@ -4,6 +4,7 @@ from datetime import datetime, timedelta
 
 import frappe
 import requests
+from frappe import _
 from frappe.utils import flt
 
 _logger = frappe.logger("biflorica", allow_site=True)
@@ -16,10 +17,14 @@ def _clean_farm_code(farm):
 
 
 @frappe.whitelist()
-def post_all_items_to_biflorica(box_type=None, packrate=None, minimum=None):
+def post_all_items_to_biflorica(
+	box_type: str | None = None,
+	packrate: str | int | float | None = None,
+	minimum: str | int | float | None = None,
+):
 	try:
 		if not frappe.db.exists("Biflorica Setting", "Biflorica Setting"):
-			frappe.throw("Biflorica Setting not found. Please create the document first.")
+			frappe.throw(_("Biflorica Setting not found. Please create the document first."))
 
 		settings = frappe.get_doc("Biflorica Setting", "Biflorica Setting")
 		_logger.info(f"[Biflorica Sync] Starting Biflorica sync for warehouse: {settings.warehouse}")
@@ -38,7 +43,7 @@ def post_all_items_to_biflorica(box_type=None, packrate=None, minimum=None):
 
 		token_valid = validate_access_token(settings)
 		if not token_valid:
-			frappe.throw("Invalid or expired access token. Please check your Biflorica credentials.")
+			frappe.throw(_("Invalid or expired access token. Please check your Biflorica credentials."))
 
 		items_data = get_enabled_offer_items(settings.warehouse)
 		if not items_data:

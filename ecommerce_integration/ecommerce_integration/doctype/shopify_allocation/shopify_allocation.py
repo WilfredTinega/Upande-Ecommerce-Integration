@@ -2,6 +2,7 @@
 # For license information, please see license.txt
 
 import frappe
+from frappe import _
 from frappe.model.document import Document
 from frappe.utils import cint, cstr, flt, nowdate
 
@@ -18,7 +19,7 @@ class ShopifyAllocation(Document):
 	def validate(self):
 		if self.source_warehouse and self.reserve_warehouse:
 			if self.source_warehouse == self.reserve_warehouse:
-				frappe.throw("Source Warehouse and Reserve Warehouse cannot be the same.")
+				frappe.throw(_("Source Warehouse and Reserve Warehouse cannot be the same."))
 
 		self.total_qty = 0
 		for row in self.items or []:
@@ -37,7 +38,7 @@ class ShopifyAllocation(Document):
 		# Drafts are raised empty for the team to fill in, so the "something must be
 		# allocated" rule belongs here rather than in validate().
 		if not self.items or not flt(self.total_qty):
-			frappe.throw("Allocate a quantity on at least one line before submitting.")
+			frappe.throw(_("Allocate a quantity on at least one line before submitting."))
 
 		# Cheaper and clearer to reject here than to let the Stock Entry fail with a
 		# negative-stock error that doesn't name the allocation line.
@@ -50,7 +51,7 @@ class ShopifyAllocation(Document):
 					f"{available} is available in {row.warehouse or self.source_warehouse}"
 				)
 		if shortfalls:
-			frappe.throw("Not enough stock to reserve — " + "; ".join(shortfalls))
+			frappe.throw(_("Not enough stock to reserve") + " — " + "; ".join(shortfalls))
 
 	def on_submit(self):
 		self._create_reservation()
@@ -68,7 +69,7 @@ class ShopifyAllocation(Document):
 	@frappe.whitelist()
 	def mark_packed(self):
 		if self.docstatus != 1:
-			frappe.throw("Submit the allocation before marking it packed.")
+			frappe.throw(_("Submit the allocation before marking it packed."))
 		self.db_set("status", "Packed")
 		self._set_order_status("Packed")
 		return self.status
@@ -76,7 +77,7 @@ class ShopifyAllocation(Document):
 	@frappe.whitelist()
 	def mark_shipped(self):
 		if self.status != "Packed":
-			frappe.throw("Mark the allocation packed before shipping it.")
+			frappe.throw(_("Mark the allocation packed before shipping it."))
 		self.db_set("status", "Shipped")
 		self._set_order_status("Shipped")
 		return self.status
@@ -97,9 +98,9 @@ class ShopifyAllocation(Document):
 		self._require_tambuzi_packing()
 
 		if self.docstatus != 1:
-			frappe.throw("Submit the allocation before raising a pick list.")
+			frappe.throw(_("Submit the allocation before raising a pick list."))
 		if self.status == "Cancelled":
-			frappe.throw("This allocation is cancelled.")
+			frappe.throw(_("This allocation is cancelled."))
 
 		existing = self._existing_pick_list()
 		if existing:
@@ -139,7 +140,7 @@ class ShopifyAllocation(Document):
 				},
 			)
 		if not pick.locations:
-			frappe.throw("This allocation has no allocated quantity to pick.")
+			frappe.throw(_("This allocation has no allocated quantity to pick."))
 
 		# Data field on that site, not an Int.
 		pick.custom_total_stems = cstr(total_stems)
@@ -158,7 +159,7 @@ class ShopifyAllocation(Document):
 
 		pick_name = self._existing_pick_list(submitted_only=True)
 		if not pick_name:
-			frappe.throw("Raise and submit the pick list before packing it.")
+			frappe.throw(_("Raise and submit the pick list before packing it."))
 
 		already = frappe.db.exists(
 			"Farm Pack List", {"custom_order_pick_list": pick_name, "docstatus": ["<", 2]}
@@ -304,7 +305,7 @@ class ShopifyAllocation(Document):
 		settings = get_shopify_settings()
 		company = settings.default_company or frappe.db.get_single_value("Global Defaults", "default_company")
 		if not company:
-			frappe.throw("Set a Company in Shopify Settings.")
+			frappe.throw(_("Set a Company in Shopify Settings."))
 
 		entry = frappe.new_doc("Stock Entry")
 		entry.stock_entry_type = "Material Transfer"
@@ -326,7 +327,7 @@ class ShopifyAllocation(Document):
 			)
 
 		if not entry.items:
-			frappe.throw("Every allocation line resolves to zero quantity.")
+			frappe.throw(_("Every allocation line resolves to zero quantity."))
 
 		entry.insert(ignore_permissions=True)
 		entry.submit()

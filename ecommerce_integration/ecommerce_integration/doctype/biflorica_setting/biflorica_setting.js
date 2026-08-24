@@ -63,17 +63,27 @@ function render_custom_fields_status(frm) {
 		method: `${CUSTOM_FIELDS_API}.check_biflorica_custom_fields`,
 		callback(r) {
 			const rows = r.message || [];
+			// ⚪ covers both "the DocType isn't on this site" and "the field is a
+			// Link to a DocType that isn't" — neither can be created here, so
+			// neither counts towards the missing tally the button acts on.
+			const unavailable = (f) => f.doctype_missing || f.link_target_missing;
 			const body = rows
 				.map((f) => {
 					const ok = f.present;
-					const dot = ok ? "🟢" : f.doctype_missing ? "⚪" : "🔴";
+					const dot = ok ? "🟢" : unavailable(f) ? "⚪" : "🔴";
 					const tag = f.optional ? " <i>(optional)</i>" : "";
+					const note =
+						!ok && f.link_target_missing
+							? ` <i>(no ${frappe.utils.escape_html(
+									f.link_target_missing
+							  )} DocType)</i>`
+							: "";
 					return `<tr><td>${dot}</td><td>${f.dt}</td><td><code>${
 						f.fieldname
-					}</code></td><td>${f.fieldtype || ""}${tag}</td></tr>`;
+					}</code></td><td>${f.fieldtype || ""}${tag}${note}</td></tr>`;
 				})
 				.join("");
-			const missing = rows.filter((f) => !f.present && !f.doctype_missing).length;
+			const missing = rows.filter((f) => !f.present && !unavailable(f)).length;
 			wrapper.$wrapper.html(`
 				<div style="margin-bottom:8px;color:var(--text-muted)">
 					${

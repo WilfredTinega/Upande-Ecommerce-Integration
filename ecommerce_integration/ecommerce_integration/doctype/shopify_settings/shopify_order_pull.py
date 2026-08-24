@@ -18,6 +18,7 @@ import json
 import re
 
 import frappe
+from frappe import _
 from frappe.utils import add_days, cint, cstr, flt, get_datetime, get_weekday, getdate, now_datetime
 
 from ecommerce_integration.ecommerce_integration.doctype.shopify_api_error_log.shopify_api_error_log import (
@@ -464,13 +465,15 @@ def reapply_stored_orders():
 
 	summary = f"orders re-read {updated}, without a payload {no_payload}, failed {failed}"
 	settings.db_set("last_order_sync_summary", summary[:900], update_modified=False)
-	frappe.db.commit()
+	# Background sync: persist the records written above and the summary field
+	# the form reads, so a later failure cannot discard a completed run.
+	frappe.db.commit()  # nosemgrep: frappe-manual-commit
 
 	return {"summary": summary, "updated": updated, "unchanged": no_payload, "failed": failed}
 
 
 @frappe.whitelist()
-def rebuild_subscriptions_from_orders(force=False):
+def rebuild_subscriptions_from_orders(force: bool = False):
 	"""Derive Shopify Subscriptions from the orders already stored.
 
 	This is what the `sub` job runs, in place of the `subscriptionContracts` query.
@@ -510,7 +513,9 @@ def rebuild_subscriptions_from_orders(force=False):
 		f"failed {failed}, orders read {len(orders)}"
 	)
 	settings.db_set("last_sync_summary", summary[:900], update_modified=False)
-	frappe.db.commit()
+	# Background sync: persist the records written above and the summary field
+	# the form reads, so a later failure cannot discard a completed run.
+	frappe.db.commit()  # nosemgrep: frappe-manual-commit
 
 	return {
 		"summary": summary,
@@ -521,7 +526,7 @@ def rebuild_subscriptions_from_orders(force=False):
 
 
 @frappe.whitelist()
-def sync_orders(force=False):
+def sync_orders(force: bool = False):
 	"""Pull orders updated since the watermark and derive their subscriptions."""
 	settings = get_shopify_settings()
 
@@ -533,8 +538,10 @@ def sync_orders(force=False):
 
 	if not frappe.db.count("Shopify Product Map"):
 		frappe.throw(
-			"The Shopify Product Map is empty, so ordered lines cannot be told apart from "
-			"delivery fees. Run 'Seed / Refresh Product Map' in Shopify Settings first."
+			_(
+				"The Shopify Product Map is empty, so ordered lines cannot be told apart from "
+				"delivery fees. Run 'Seed / Refresh Product Map' in Shopify Settings first."
+			)
 		)
 
 	watermark_at_entry = (
@@ -644,7 +651,9 @@ def sync_orders(force=False):
 		)
 	)
 	settings.db_set("last_order_sync_summary", summary, update_modified=False)
-	frappe.db.commit()
+	# Background sync: persist the records written above and the summary field
+	# the form reads, so a later failure cannot discard a completed run.
+	frappe.db.commit()  # nosemgrep: frappe-manual-commit
 	flush_api_log()
 
 	return {

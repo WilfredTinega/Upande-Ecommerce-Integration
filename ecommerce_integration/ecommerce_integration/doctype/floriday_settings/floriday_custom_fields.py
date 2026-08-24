@@ -199,6 +199,26 @@ def _has_field(dt, fieldname):
 		return False
 
 
+def _missing_link_target(df):
+	"""The Link/Table target of `df`, when that DocType is not on this site.
+
+	Fields are created with `ignore_validate=True`, so nothing stops a Link whose
+	target DocType is missing from being created dangling — the control renders
+	broken, and Frappe's test-record dependency walk aborts on it ("DocType
+	<target> not found"). Cross-app targets such as "Business Unit" / "Farm"
+	(upande_core) or "Consignee" (upande_packhouse) are simply absent on sites
+	that don't run those apps, so the field is skipped there instead.
+	"""
+	if df.get("fieldtype") not in ("Link", "Table", "Table MultiSelect"):
+		return None
+
+	target = (df.get("options") or "").strip()
+	if not target or target == "[Select]":
+		return None
+
+	return None if frappe.db.exists("DocType", target) else target
+
+
 @frappe.whitelist()
 def check_floriday_custom_fields():
 	"""Report presence of every expected field as a list of per-field dicts."""
@@ -218,6 +238,7 @@ def check_floriday_custom_fields():
 				"options": df.get("options"),
 				"present": bool(present),
 				"doctype_missing": present is None,
+				"link_target_missing": _missing_link_target(df),
 				"optional": bool(spec.get("optional")),
 			}
 		)
@@ -225,7 +246,7 @@ def check_floriday_custom_fields():
 
 
 @frappe.whitelist()
-def create_missing_floriday_custom_fields(field_ids=None):
+def create_missing_floriday_custom_fields(field_ids: str | list | None = None):
 	"""Create the missing expected fields. `field_ids` is an optional JSON list /
 	comma string of "<DocType>::<fieldname>" ids; omit it to create all missing."""
 	import json
@@ -258,6 +279,11 @@ def create_missing_floriday_custom_fields(field_ids=None):
 			skipped.append({"id": fid, "reason": "already present"})
 			continue
 
+		link_target = _missing_link_target(df)
+		if link_target:
+			skipped.append({"id": fid, "reason": f"link target DocType '{link_target}' not on this site"})
+			continue
+
 		try:
 			create_custom_field(dt, dict(df), ignore_validate=True)
 			created.append({"id": fid})
@@ -266,7 +292,9 @@ def create_missing_floriday_custom_fields(field_ids=None):
 
 	if created:
 		frappe.clear_cache()
-		frappe.db.commit()
+		# Custom fields are schema; commit so the cache clear above and the new
+		# columns are visible to the form that reloads right after this response.
+		frappe.db.commit()  # nosemgrep: frappe-manual-commit
 
 	return {
 		"status": "success",

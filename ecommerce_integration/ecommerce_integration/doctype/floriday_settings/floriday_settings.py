@@ -3,6 +3,7 @@
 
 import frappe
 import requests
+from frappe import _
 from frappe.integrations.utils import make_post_request
 from frappe.model.document import Document
 from frappe.utils import flt
@@ -223,7 +224,7 @@ class FloridaySettings(Document):
 		rows = self.get("floriday_warehouses") or []
 		used = [r for r in rows if r.get("used")]
 		if len(used) > 1:
-			frappe.throw("Only one Floriday warehouse can be marked as Used.")
+			frappe.throw(_("Only one Floriday warehouse can be marked as Used."))
 		if used:
 			r = used[0]
 			self.warehouse_id = r.warehouse_id or self.warehouse_id
@@ -269,7 +270,7 @@ class FloridaySettings(Document):
 		return create_sales_orders_from_floriday()
 
 	@frappe.whitelist()
-	def create_batch(self, selected_rows=None):
+	def create_batch(self, selected_rows: str | list | None = None):
 		from ecommerce_integration.ecommerce_integration.doctype.floriday_settings.floriday_batch import (
 			create_batches_on_floriday,
 		)
@@ -398,7 +399,7 @@ def _get_settings_doc():
 		return frappe.get_single("Floriday Settings")
 	settings_list = frappe.get_all("Floriday Settings", fields=["name"], limit_page_length=1)
 	if not settings_list:
-		frappe.throw("Floriday Settings doc not found. Please create it first.")
+		frappe.throw(_("Floriday Settings doc not found. Please create it first."))
 	return frappe.get_doc("Floriday Settings", settings_list[0].name)
 
 
@@ -507,7 +508,9 @@ def resync_scheduled_jobs():
 		return {"jobs": []}
 	doc = _get_settings_doc()
 	doc._sync_scheduled_jobs(force=True)
-	frappe.db.commit()
+	# Also runs from after_install/after_migrate, which have no request
+	# transaction to commit the Scheduled Job Type upserts for us.
+	frappe.db.commit()  # nosemgrep: frappe-manual-commit
 	return {
 		"jobs": frappe.get_all(
 			"Scheduled Job Type",
@@ -838,7 +841,7 @@ def _aggregate_floriday_stock(warehouses, apply_stock_source=False):
 
 
 @frappe.whitelist()
-def get_floriday_stock(warehouse=None):
+def get_floriday_stock(warehouse: str | None = None):
 	"""Per-(item, stem_length) balances in the configured Floriday warehouse
 	(Online Available for Sale), computed from Stock Ledger Entry and joined to
 	Floriday trade items.
@@ -994,7 +997,14 @@ def get_system_floriday_stock():
 
 @frappe.whitelist()
 @frappe.validate_and_sanitize_search_inputs
-def item_query_with_stock(doctype, txt, searchfield, start, page_len, filters):
+def item_query_with_stock(
+	doctype: str,
+	txt: str,
+	searchfield: str,
+	start: int,
+	page_len: int,
+	filters: dict | None,
+):
 	"""Link query: return Items with positive bin balance in `filters.warehouse`.
 
 	Used by the Add/Move dialog so the Item picker only shows items actually
@@ -1022,7 +1032,7 @@ def item_query_with_stock(doctype, txt, searchfield, start, page_len, filters):
 
 
 @frappe.whitelist()
-def get_warehouse_stock_items(warehouse=None):
+def get_warehouse_stock_items(warehouse: str | None = None):
 	"""Return items with positive bin balance in the given warehouse.
 
 	Used by the Move Stock dialog to filter the Item Link to items actually present
@@ -1048,7 +1058,7 @@ def get_warehouse_stock_items(warehouse=None):
 
 
 @frappe.whitelist()
-def get_item_floriday_meta(item_code):
+def get_item_floriday_meta(item_code: str):
 	"""Given a Stock-level item_code (could be variant or template), return any
 	matching Floriday stem_length + trade_item_id mapping plus stock UOM.
 
@@ -1158,7 +1168,7 @@ def _pick_floriday_company():
 	"""
 	companies = frappe.get_all("Company", fields=["name"], order_by="name")
 	if not companies:
-		frappe.throw("No Company found")
+		frappe.throw(_("No Company found"))
 	if len(companies) == 1:
 		return companies[0].name
 	for c in companies:
@@ -1323,6 +1333,8 @@ def _fetch_floriday_warehouses(doc):
 		doc.organization_supplier_id = chosen.get("organizationId") or ""
 
 	doc.save(ignore_permissions=True)
-	frappe.db.commit()
+	# Persist the resolved warehouse/organization ids before returning; the
+	# caller reloads the form straight from the DB.
+	frappe.db.commit()  # nosemgrep: frappe-manual-commit
 
 	return {"status": "success", "count": len(owned), "total": len(items)}

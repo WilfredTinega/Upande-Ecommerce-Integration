@@ -199,8 +199,14 @@ doc_events = {
 
 # Testing
 # -------
-
-# before_tests = "ecommerce_integration.install.before_tests"
+# `bench run-tests --app ecommerce_integration` only runs THIS app's before_tests
+# hook (frappe.get_hooks("before_tests", app_name=app)), so ERPNext's own hook
+# never fires and its test records — which need a Company, fiscal year and the
+# setup-wizard fixtures — would fail. Reuse ERPNext's setup routine, same as
+# upande_webshop and payments do. CI also runs
+# `ecommerce_integration.setup.ci.setup_test_site` explicitly, which covers this
+# plus the external link-target stubs, so tests hold up either way.
+before_tests = "erpnext.setup.utils.before_tests"
 
 # Extend DocType Class
 # ------------------------------

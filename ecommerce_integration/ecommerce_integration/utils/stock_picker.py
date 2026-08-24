@@ -147,6 +147,9 @@ def _bin_rows(name_by_leaf):
 		return []
 
 	placeholders = ",".join(["%s"] * len(name_by_leaf))
+	# The f-string only interpolates `placeholders`, a locally built run of %s
+	# markers; every warehouse name travels as a bound parameter below.
+	# nosemgrep: frappe-sql-format-injection
 	bins = frappe.db.sql(
 		f"""
 		SELECT b.warehouse, b.item_code, i.item_name,
@@ -188,7 +191,7 @@ def get_warehouse_rows():
 
 
 @frappe.whitelist()
-def get_customer_warehouse_rows(warehouse):
+def get_customer_warehouse_rows(warehouse: str):
 	"""get_warehouse_rows() scoped to a single warehouse (Customer Settings tab)."""
 	if not warehouse:
 		return []
@@ -259,7 +262,11 @@ def _stem_length_price_row(wip_doc, stem_length):
 
 
 @frappe.whitelist()
-def set_webshop_enabled_stock(items, enabled=1, source_warehouse=None):
+def set_webshop_enabled_stock(
+	items: str | list,
+	enabled: str | int | bool = 1,
+	source_warehouse: str | None = None,
+):
 	"""Publish (or un-publish) per-length stock to the storefront. No stock move.
 
 	`items`: JSON list of {item_code, stem_length, qty}. Each entry's Webshop
@@ -330,5 +337,7 @@ def set_webshop_enabled_stock(items, enabled=1, source_warehouse=None):
 		wip_doc.save(ignore_permissions=True)
 		touched_items.append(item_code)
 
-	frappe.db.commit()
+	# Each WIP doc was saved in its own iteration above; commit so a failure
+	# in a later item cannot roll back stock already published.
+	frappe.db.commit()  # nosemgrep: frappe-manual-commit
 	return {"updated": updated, "items": touched_items, "capped": capped}

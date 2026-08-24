@@ -172,5 +172,7 @@ def flush_api_log():
 				written += 1
 
 	if written:
-		frappe.db.commit()
+		# Background sync: persist the records written above and the summary field
+		# the form reads, so a later failure cannot discard a completed run.
+		frappe.db.commit()  # nosemgrep: frappe-manual-commit
 	return written

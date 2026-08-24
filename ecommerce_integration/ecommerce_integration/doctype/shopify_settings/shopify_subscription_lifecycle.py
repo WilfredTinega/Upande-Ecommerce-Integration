@@ -124,7 +124,7 @@ def end_date_for(start_date, frequency, deliveries_total):
 
 
 @frappe.whitelist()
-def expire_subscriptions(force=False):
+def expire_subscriptions(force: bool = False):
 	"""Flip subscriptions whose end date has passed to Inactive, and refresh the
 	delivered/remaining counters on the ones still running."""
 	settings = get_shopify_settings()
@@ -173,7 +173,9 @@ def expire_subscriptions(force=False):
 
 	summary = f"made inactive {expired}, still running {refreshed}, failed {failed}"
 	settings.db_set("last_expiry_summary", summary, update_modified=False)
-	frappe.db.commit()
+	# Background sync: persist the records written above and the summary field
+	# the form reads, so a later failure cannot discard a completed run.
+	frappe.db.commit()  # nosemgrep: frappe-manual-commit
 
 	return {"summary": summary, "inactive": expired, "running": refreshed, "failed": failed}
 

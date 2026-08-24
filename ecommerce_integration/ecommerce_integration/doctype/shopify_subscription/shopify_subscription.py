@@ -2,6 +2,7 @@
 # For license information, please see license.txt
 
 import frappe
+from frappe import _
 from frappe.model.document import Document
 
 
@@ -32,8 +33,10 @@ class ShopifySubscription(Document):
 			# An active subscription with no customer produces allocations nobody can
 			# act on, so surface it here rather than at allocation time.
 			frappe.msgprint(
-				"No ERPNext customer is linked. Set a Fallback Customer in Shopify Settings, "
-				"or link one here before allocations are raised.",
+				_(
+					"No ERPNext customer is linked. Set a Fallback Customer in Shopify Settings, "
+					"or link one here before allocations are raised."
+				),
 				indicator="orange",
 				alert=True,
 			)

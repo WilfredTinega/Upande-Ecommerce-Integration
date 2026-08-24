@@ -534,7 +534,14 @@ function render_custom_fields_panel(frm, rows) {
 	}
 
 	const present = rows.filter((r) => r.present).length;
-	const missing = rows.filter((r) => !r.present && !r.doctype_missing).length;
+	// A field whose Link target DocType is absent is not "missing" — it cannot be
+	// created here at all (the backend skips it), so it gets its own bucket.
+	const link_absent = rows.filter(
+		(r) => !r.present && !r.doctype_missing && r.link_target_missing
+	).length;
+	const missing = rows.filter(
+		(r) => !r.present && !r.doctype_missing && !r.link_target_missing
+	).length;
 	const dt_missing = rows.filter((r) => r.doctype_missing).length;
 
 	const head = `<div style="margin-bottom:8px;">
@@ -543,6 +550,13 @@ function render_custom_fields_panel(frm, rows) {
 		${
 			dt_missing
 				? `<span class="indicator-pill red">${__("DocType absent")}: ${dt_missing}</span>`
+				: ""
+		}
+		${
+			link_absent
+				? `<span class="indicator-pill gray">${__(
+						"Link target absent"
+				  )}: ${link_absent}</span>`
 				: ""
 		}
 	</div>`;
@@ -558,12 +572,19 @@ function render_custom_fields_panel(frm, rows) {
 				badge = __("Present");
 				color = "green";
 				disabled = "disabled";
+			} else if (r.link_target_missing) {
+				badge = __("Link target absent: {0}", [r.link_target_missing]);
+				color = "gray";
+				disabled = "disabled";
 			} else {
 				badge = r.optional ? __("Missing (optional)") : __("Missing");
 				color = "orange";
 				disabled = "";
 			}
-			const checked = !r.present && !r.doctype_missing && !r.optional ? "checked" : "";
+			const checked =
+				!r.present && !r.doctype_missing && !r.link_target_missing && !r.optional
+					? "checked"
+					: "";
 			return `<tr>
 				<td style="width:32px;text-align:center;">
 					<input type="checkbox" class="floriday-cf-check"
@@ -595,7 +616,7 @@ function check_custom_fields(frm, { silent } = {}) {
 			render_custom_fields_panel(frm, _floriday_field_status);
 			if (!silent) {
 				const missing = _floriday_field_status.filter(
-					(x) => !x.present && !x.doctype_missing
+					(x) => !x.present && !x.doctype_missing && !x.link_target_missing
 				).length;
 				frappe.show_alert(
 					{

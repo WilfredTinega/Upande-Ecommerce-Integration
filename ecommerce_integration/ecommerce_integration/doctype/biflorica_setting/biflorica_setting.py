@@ -2,9 +2,11 @@
 # For license information, please see license.txt
 
 import json
+from datetime import datetime
 
 import frappe
 import requests
+from frappe import _
 from frappe.model.document import Document
 from frappe.utils import flt
 
@@ -173,7 +175,9 @@ def resync_scheduled_jobs():
 		if name:
 			frappe.delete_doc("Scheduled Job Type", name, force=True, ignore_permissions=True)
 	doc._sync_scheduled_jobs(force=True)
-	frappe.db.commit()
+	# Also runs from after_install/after_migrate, which have no request
+	# transaction to commit the Scheduled Job Type upserts for us.
+	frappe.db.commit()  # nosemgrep: frappe-manual-commit
 	return {
 		"jobs": frappe.get_all(
 			"Scheduled Job Type",
@@ -228,13 +232,13 @@ def run_sync_deals_and_predeals():
 def _get_settings():
 	settings_name = "Biflorica Setting"
 	if not frappe.db.exists("Biflorica Setting", settings_name):
-		frappe.throw("Biflorica Setting not found. Please configure it first.")
+		frappe.throw(_("Biflorica Setting not found. Please configure it first."))
 	return frappe.get_doc("Biflorica Setting", settings_name)
 
 
 def _auth_headers(settings):
 	if not settings.access_token:
-		frappe.throw("Access token is missing. Click 'Update Access Token' first.")
+		frappe.throw(_("Access token is missing. Click 'Update Access Token' first."))
 	return {
 		"Authorization": f"Bearer {settings.access_token}",
 		"Content-Type": "application/json",
@@ -349,7 +353,7 @@ def update_access_token():
 				token = response["token"]
 
 		if token != "":
-			frappe.db.set_value("Biflorica Setting", settings_name, "access_token", token)
+			frappe.db.set_single_value("Biflorica Setting", "access_token", token)
 			frappe.db.commit()
 			_logger.info("[Biflorica Token Update] Access token updated")
 			return {"success": True, "message": "Access token updated successfully"}
@@ -410,12 +414,14 @@ def refresh_stock():
 
 
 @frappe.whitelist()
-def post_offers(box_type=None, packrate=None, minimum=None):
+def post_offers(
+	box_type: str | None = None,
+	packrate: str | int | float | None = None,
+	minimum: str | int | float | None = None,
+):
 	try:
 		result = post_all_items_to_biflorica(box_type=box_type, packrate=packrate, minimum=minimum) or {}
-		frappe.db.set_value(
-			"Biflorica Setting", "Biflorica Setting", "offer_last_run", frappe.utils.now_datetime()
-		)
+		frappe.db.set_single_value("Biflorica Setting", "offer_last_run", frappe.utils.now_datetime())
 		frappe.db.commit()
 
 		api_response = result.get("api_response") or {}
@@ -539,7 +545,9 @@ def _store_posted_offer_sizes(parsed_results, posted_offers):
 		else:
 			doc.append("live_offers", {"offer_id": offer_id, "size": size, "variety": variety})
 	doc.save(ignore_permissions=True)
-	frappe.db.commit()
+	# Called from the offers sync loop; persist the live_offers rows before the
+	# next Biflorica request so a later HTTP failure can't roll them back.
+	frappe.db.commit()  # nosemgrep: frappe-manual-commit
 
 
 @frappe.whitelist()
@@ -1060,7 +1068,7 @@ def _create_sales_order_from_deal(settings, deal, submit=True, kind="deal", stem
 
 
 @frappe.whitelist()
-def get_deals(window_from=None):
+def get_deals(window_from: str | datetime | None = None):
 	try:
 		settings = _get_settings()
 		params = _build_deal_params(settings, "deals", window_from=window_from)
@@ -1130,9 +1138,7 @@ def get_deals(window_from=None):
 					}
 				)
 
-		frappe.db.set_value(
-			"Biflorica Setting", "Biflorica Setting", "deals_last_run", frappe.utils.now_datetime()
-		)
+		frappe.db.set_single_value("Biflorica Setting", "deals_last_run", frappe.utils.now_datetime())
 		frappe.db.commit()
 
 		summary = {
@@ -1165,7 +1171,7 @@ PREDEAL_PO_PREFIX = "BIFLORICA-PREDEAL-"
 
 
 @frappe.whitelist()
-def get_predeals(window_from=None):
+def get_predeals(window_from: str | datetime | None = None):
 	"""Fetch Biflorica preorders and create them as DRAFT Sales Orders.
 
 	Unlike deals (auto-submitted + approved), predeals land as drafts for review.
@@ -1222,9 +1228,7 @@ def get_predeals(window_from=None):
 			frappe.db.commit()
 			created.append({"deal_id": deal_id, "box_label": label, "sales_order": so_name})
 
-		frappe.db.set_value(
-			"Biflorica Setting", "Biflorica Setting", "predeal_last_run", frappe.utils.now_datetime()
-		)
+		frappe.db.set_single_value("Biflorica Setting", "predeal_last_run", frappe.utils.now_datetime())
 		frappe.db.commit()
 
 		summary = {
@@ -1342,7 +1346,7 @@ def process_predeals():
 
 
 @frappe.whitelist()
-def approve_deal(deal_id):
+def approve_deal(deal_id: str):
 	try:
 		if not deal_id:
 			return {"success": False, "message": "Deal ID is required"}
@@ -1361,9 +1365,7 @@ def approve_deal(deal_id):
 					break
 		result = _approve_deals(settings, [match])
 		if result["success"]:
-			frappe.db.set_value(
-				"Biflorica Setting", "Biflorica Setting", "deals_last_run", frappe.utils.now_datetime()
-			)
+			frappe.db.set_single_value("Biflorica Setting", "deals_last_run", frappe.utils.now_datetime())
 			frappe.db.commit()
 		return result
 	except Exception as e:

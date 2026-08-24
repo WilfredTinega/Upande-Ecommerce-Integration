@@ -329,7 +329,7 @@ def _apply_contract(doc, node, settings):
 
 
 @frappe.whitelist()
-def sync_subscription_contracts(force=False):
+def sync_subscription_contracts(force: bool = False):
 	"""Page every subscription contract and upsert the changed ones.
 
 	`force` is the manual "Sync Now" path and bypasses the enable switches; the
@@ -355,7 +355,9 @@ def sync_subscription_contracts(force=False):
 			"unless a subscriptions app is installed."
 		)
 		settings.db_set("last_sync_summary", f"Skipped: {reason}"[:900], update_modified=False)
-		frappe.db.commit()
+		# Background sync: persist the records written above and the summary field
+		# the form reads, so a later failure cannot discard a completed run.
+		frappe.db.commit()  # nosemgrep: frappe-manual-commit
 		return {"skipped": True, "reason": reason, "summary": f"Skipped: {reason}"}
 
 	watermark_at_entry = (
@@ -445,7 +447,9 @@ def sync_subscription_contracts(force=False):
 		else f"created {created}, updated {updated}, unchanged {skipped}, failed {failed}, pages {pages}"
 	)
 	settings.db_set("last_sync_summary", summary, update_modified=False)
-	frappe.db.commit()
+	# Background sync: persist the records written above and the summary field
+	# the form reads, so a later failure cannot discard a completed run.
+	frappe.db.commit()  # nosemgrep: frappe-manual-commit
 	flush_api_log()
 
 	return {

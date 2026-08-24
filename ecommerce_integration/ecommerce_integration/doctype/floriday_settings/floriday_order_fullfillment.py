@@ -296,6 +296,9 @@ def order_fullment():
 
 		has_so_gln = frappe.db.has_column("Sales Order", "custom_floriday_delivery_id")
 		gln_select = "so.custom_floriday_delivery_id" if has_so_gln else "NULL"
+		# `gln_select` is one of two hard-coded column expressions chosen above,
+		# never user input; start_time/customer are bound parameters.
+		# nosemgrep: frappe-sql-format-injection
 		sales_orders = frappe.db.sql(
 			f"""
             SELECT so.name, so.po_no, so.customer, so.delivery_date, so.status,

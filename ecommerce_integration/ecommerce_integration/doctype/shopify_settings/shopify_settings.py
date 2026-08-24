@@ -7,6 +7,7 @@ from datetime import timezone
 from zoneinfo import ZoneInfo
 
 import frappe
+from frappe import _
 from frappe.integrations.utils import make_post_request
 from frappe.model.document import Document
 from frappe.utils import add_to_date, cint, get_datetime, get_system_timezone, now_datetime
@@ -172,7 +173,7 @@ class ShopifySettings(Document):
 
 		if self.default_source_warehouse and self.default_reserve_warehouse:
 			if self.default_source_warehouse == self.default_reserve_warehouse:
-				frappe.throw("Default Source Warehouse and Default Reserve Warehouse cannot be the same.")
+				frappe.throw(_("Default Source Warehouse and Default Reserve Warehouse cannot be the same."))
 
 		self._backfill_task_frequencies()
 
@@ -375,7 +376,9 @@ class ShopifySettings(Document):
 
 		summary = " | ".join(f"{r['step']}: {'ok' if r['ok'] else 'FAILED'}" for r in results)
 		self.db_set("last_full_run", f"{now_datetime()} — {summary}"[:900], update_modified=False)
-		frappe.db.commit()
+		# Background sync: persist the records written above and the summary field
+		# the form reads, so a later failure cannot discard a completed run.
+		frappe.db.commit()  # nosemgrep: frappe-manual-commit
 		_flush_api_log()
 		return {"results": results, "summary": summary}
 
@@ -628,11 +631,11 @@ def refresh_access_token(settings=None):
 	settings = settings or get_shopify_settings()
 
 	if not settings.shop_domain:
-		frappe.throw("Shopify Settings: Shop Domain is not set.")
+		frappe.throw(_("Shopify Settings: Shop Domain is not set."))
 
 	client_secret = settings.get_password("client_secret", raise_exception=False)
 	if not (settings.client_id and client_secret):
-		frappe.throw("Shopify Settings: Client ID and Client Secret are required to mint a token.")
+		frappe.throw(_("Shopify Settings: Client ID and Client Secret are required to mint a token."))
 
 	from ecommerce_integration.ecommerce_integration.doctype.shopify_api_error_log.shopify_api_error_log import (
 		log_api_call,
@@ -695,7 +698,9 @@ def refresh_access_token(settings=None):
 		response={"expires_in": expires_in, "scope": response.get("scope")},
 		duration_ms=(time.monotonic() - started) * 1000,
 	)
-	frappe.db.commit()
+	# Background sync: persist the records written above and the summary field
+	# the form reads, so a later failure cannot discard a completed run.
+	frappe.db.commit()  # nosemgrep: frappe-manual-commit
 	_flush_api_log()
 
 	# The mint response's `scope` can be empty even when the installation has scopes,
@@ -756,13 +761,15 @@ def _ensure_access_token(settings):
 		return token
 
 	frappe.throw(
-		"Shopify Settings: no Admin API Access Token. Either paste a shpat_ token, "
-		"or set the Client ID and Secret so one can be minted."
+		_(
+			"Shopify Settings: no Admin API Access Token. Either paste a shpat_ token, "
+			"or set the Client ID and Secret so one can be minted."
+		)
 	)
 
 
 @frappe.whitelist()
-def refresh_access_token_if_due(force=False):
+def refresh_access_token_if_due(force: bool = False):
 	"""Scheduled counterpart to the lazy refresh: keeps the token warm even when
 	nothing has called Shopify."""
 	settings = get_shopify_settings()
@@ -804,7 +811,7 @@ def shopify_graphql(query, variables=None, settings=None, retries=3, operation=N
 	settings = settings or get_shopify_settings()
 
 	if not settings.shop_domain:
-		frappe.throw("Shopify Settings: Shop Domain is not set.")
+		frappe.throw(_("Shopify Settings: Shop Domain is not set."))
 
 	token = _ensure_access_token(settings)
 
@@ -889,7 +896,8 @@ def resync_scheduled_jobs():
 		return
 	settings = get_shopify_settings()
 	settings._sync_scheduled_jobs(force=True)
-	frappe.db.commit()
+	# after_migrate hook: no request transaction to persist the job upserts.
+	frappe.db.commit()  # nosemgrep: frappe-manual-commit
 
 
 def ensure_log_retention():
@@ -904,4 +912,5 @@ def ensure_log_retention():
 		return
 	settings = get_shopify_settings()
 	settings._sync_log_retention()
-	frappe.db.commit()
+	# after_migrate hook: no request transaction to persist the retention row.
+	frappe.db.commit()  # nosemgrep: frappe-manual-commit

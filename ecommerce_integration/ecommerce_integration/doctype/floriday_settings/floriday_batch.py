@@ -5,10 +5,11 @@ from typing import Any
 
 import frappe
 import requests
+from frappe import _
 
 
 @frappe.whitelist()
-def create_batches_on_floriday(selected_rows=None):
+def create_batches_on_floriday(selected_rows: str | list | None = None):
 	"""
 	Post one batch per (item, stem_length) row against the Floriday warehouse
 	(Online Available for Sale). Each batch carries the stem-length-specific
@@ -38,7 +39,7 @@ def create_batches_on_floriday(selected_rows=None):
 	SOURCE_WAREHOUSE = settings.warehouse
 
 	if not SOURCE_WAREHOUSE:
-		frappe.throw("Warehouse not configured in Floriday Settings")
+		frappe.throw(_("Warehouse not configured in Floriday Settings"))
 
 	if selected_rows is not None:
 		if isinstance(selected_rows, str):

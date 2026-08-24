@@ -3,6 +3,7 @@ from datetime import datetime, timedelta, timezone
 
 import frappe
 import requests
+from frappe import _
 
 from ecommerce_integration.ecommerce_integration.utils import create_orders_as_quotation
 
@@ -518,7 +519,7 @@ def create_sales_orders_from_floriday():
 		WAREHOUSE = settings.warehouse
 
 		if not all([API_KEY, BASE_URL, ACCESS_TOKEN, SUPPLIER_ORG_ID]):
-			frappe.throw("Floriday Settings incomplete")
+			frappe.throw(_("Floriday Settings incomplete"))
 
 		# WAREHOUSE is optional: stock is allocated on the Sales Order itself, so
 		# fetching orders must not depend on it. When it is unset each line falls
@@ -590,9 +591,8 @@ def create_sales_orders_from_floriday():
 			)
 
 		if not isinstance(orders, list):
-			error_msg = "Invalid response format"
-			log_short(error_msg, "Floriday Format Error", True)
-			frappe.throw(error_msg)
+			log_short("Invalid response format", "Floriday Format Error", True)
+			frappe.throw(_("Invalid response format"))
 
 		results = []
 		processed_count = 0
@@ -696,7 +696,7 @@ def create_sales_order_from_floriday(floriday_order, warehouse, settings=None):
 	still stamped where they exist on Quotation (guarded per field)."""
 	floriday_order_id = floriday_order.get("salesOrderId")
 	if not floriday_order_id:
-		frappe.throw("Floriday order missing salesOrderId")
+		frappe.throw(_("Floriday order missing salesOrderId"))
 
 	target_dt = _floriday_order_target_doctype()
 
@@ -826,7 +826,7 @@ Delivery Point: {delivery_point_name or "Not resolved"}"""
 			# throw a clear error rather than guessing a company.
 			sales_order.company = settings.get("company") if settings else None
 			if not sales_order.company:
-				frappe.throw("Company not configured in Floriday Settings")
+				frappe.throw(_("Company not configured in Floriday Settings"))
 
 			item_warehouse = warehouse
 
@@ -884,7 +884,7 @@ Delivery Point: {delivery_point_name or "Not resolved"}"""
 				sales_order.custom_farm = farm
 
 	if not sales_order.items:
-		frappe.throw("No valid items found")
+		frappe.throw(_("No valid items found"))
 
 	# custom_sales_order_type / custom_business_unit / custom_order_name / custom_farm
 	# are mandatory on this site. All come from Floriday Settings (no hardcoded
@@ -921,7 +921,9 @@ Delivery Point: {delivery_point_name or "Not resolved"}"""
 		# Item, so a draft Quotation already carries the correct rate * qty amount
 		# and is left as-is for staff to review and convert.
 		_force_floriday_amounts_in_db(sales_order)
-	frappe.db.commit()
+	# _force_floriday_amounts_in_db() rewrote the submitted amounts with raw SQL
+	# outside the document layer; commit so those writes and the doc agree.
+	frappe.db.commit()  # nosemgrep: frappe-manual-commit
 
 	log_short(
 		f"{target_dt} {sales_order.name} created (Delivery Point: {delivery_point_name or 'unresolved'}, GLN: {delivery_gln or 'none'})",
@@ -1021,7 +1023,7 @@ def _get_or_create_customer_legacy(floriday_order, settings=None):
 	3. Otherwise create a new customer.
 	"""
 	if not floriday_order:
-		frappe.throw("No order data provided")
+		frappe.throw(_("No order data provided"))
 
 	# Get the Floriday customer/organization ID (UUID format)
 	customer_org_id = floriday_order.get("customerOrganizationId")
@@ -1176,7 +1178,7 @@ def get_default_customer():
 	"""
 	customer = _floriday_setting("customer")
 	if not customer:
-		frappe.throw("Customer not configured in Floriday Settings")
+		frappe.throw(_("Customer not configured in Floriday Settings"))
 	if frappe.db.exists("Customer", customer):
 		return customer
 	# Fall back to a customer_name match (in case the PK differs from the label).
@@ -1245,7 +1247,7 @@ def get_sync_status():
 
 
 @frappe.whitelist()
-def map_delivery_point(floriday_gln, delivery_point_name):
+def map_delivery_point(floriday_gln: str, delivery_point_name: str):
 	"""Manually tag a Delivery Point with a Floriday GLN (custom_floriday_delivery_id)."""
 	try:
 		if not floriday_gln or not delivery_point_name:

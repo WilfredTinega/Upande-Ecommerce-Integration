@@ -167,7 +167,9 @@ def seed_product_map():
 
 	summary = f"created {created}, refreshed {updated}"
 	settings.db_set("map_summary", summary, update_modified=False)
-	frappe.db.commit()
+	# Background sync: persist the records written above and the summary field
+	# the form reads, so a later failure cannot discard a completed run.
+	frappe.db.commit()  # nosemgrep: frappe-manual-commit
 	flush_api_log()
 	return {"summary": summary, "created": created, "updated": updated}
 

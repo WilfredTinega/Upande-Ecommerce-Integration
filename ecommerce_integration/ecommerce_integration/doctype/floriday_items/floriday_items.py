@@ -5,6 +5,7 @@ import re
 
 import frappe
 import requests
+from frappe import _
 from frappe.model.document import Document
 
 _ITEM_GROUP_REGEXP = r"(^|[^[:alnum:]])(rose|roses|herb|herbs)([^[:alnum:]]|$)"
@@ -72,7 +73,7 @@ from ecommerce_integration.ecommerce_integration.utils.stem_length import (
 
 class FloridayItems(Document):
 	@frappe.whitelist()
-	def fetch_stem_length_prices(self, price_list=None):
+	def fetch_stem_length_prices(self, price_list: str | None = None):
 		if not self.item_code:
 			_alert("Item Code is required to fetch prices.", "red")
 			return 0
@@ -140,7 +141,7 @@ class FloridayItems(Document):
 def _get_floriday_settings():
 	settings = frappe.get_single("Floriday Settings")
 	if not (settings.base_url and settings.access_token and settings.api_key):
-		frappe.throw("Floriday Settings missing base_url, access_token, or api_key.")
+		frappe.throw(_("Floriday Settings missing base_url, access_token, or api_key."))
 	return settings
 
 
@@ -165,7 +166,7 @@ def _fetch_floriday_trade_items():
 	data = response.json()
 	trade_items = data.get("results", data) if isinstance(data, dict) else data
 	if not isinstance(trade_items, list):
-		frappe.throw("Unexpected Floriday response shape.")
+		frappe.throw(_("Unexpected Floriday response shape."))
 
 	article_lookup = {}
 	for ti in trade_items:
@@ -257,7 +258,7 @@ def get_item_code_from_trade_item_id(trade_item_id):
 
 
 @frappe.whitelist()
-def sync_system_items(force=False, price_list=None):
+def sync_system_items(force: bool = False, price_list: str | None = None):
 	if not force and not frappe.db.get_single_value("Floriday Settings", "fi_enabled"):
 		return {"skipped": True, "reason": "Floriday Items sync is disabled (fi_enabled = 0)"}
 
@@ -306,7 +307,7 @@ def sync_system_items(force=False, price_list=None):
 
 
 @frappe.whitelist()
-def update_trade_item_ids(force=False):
+def update_trade_item_ids(force: bool = False):
 	if not force and not frappe.db.get_single_value("Floriday Settings", "fi_enabled"):
 		return {"skipped": True, "reason": "Floriday Items sync is disabled (fi_enabled = 0)"}
 
@@ -375,7 +376,7 @@ def update_trade_item_ids(force=False):
 
 
 @frappe.whitelist()
-def sync_floriday_items(force=False, price_list=None):
+def sync_floriday_items(force: bool = False, price_list: str | None = None):
 	system = sync_system_items(force=force, price_list=price_list)
 	trade = update_trade_item_ids(force=force)
 	return {**system, **trade}
