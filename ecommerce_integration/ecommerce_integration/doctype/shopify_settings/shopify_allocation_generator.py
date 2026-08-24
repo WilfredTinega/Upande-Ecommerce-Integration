@@ -211,9 +211,7 @@ def create_allocations_for_subscription(subscription_name, settings=None):
 		allocation_name = f"SHOP-ALL-{order.name}-{index}"
 		if frappe.db.exists("Shopify Allocation", allocation_name):
 			continue
-		created.append(
-			_new_allocation(order, settings, index, 0, delivery_date, required_stems)
-		)
+		created.append(_new_allocation(order, settings, index, 0, delivery_date, required_stems))
 
 	if created:
 		frappe.db.set_value(

@@ -51,7 +51,7 @@ MAX_SCHEDULED_DATES = 400
 
 
 def parse_delivery_days(text):
-	""""Monday, Thu" -> [0, 3]. Unknown words are ignored rather than fatal."""
+	""" "Monday, Thu" -> [0, 3]. Unknown words are ignored rather than fatal."""
 	found = []
 	for token in cstr(text).replace(";", ",").split(","):
 		token = token.strip().lower()

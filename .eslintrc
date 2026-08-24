@@ -26,6 +26,8 @@
 	"root": true,
 	"globals": {
 		"frappe": true,
+		"ecommerce_integration": true,
+		"upande": true,
 		"Vue": true,
 		"SetVueGlobals": true,
 		"__": true,

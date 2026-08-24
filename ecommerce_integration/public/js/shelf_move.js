@@ -13,7 +13,8 @@
 
 frappe.provide("ecommerce_integration");
 
-ecommerce_integration.GET_SHELF_ROWS = "ecommerce_integration.ecommerce_integration.utils.stock_picker.get_shelf_rows";
+ecommerce_integration.GET_SHELF_ROWS =
+	"ecommerce_integration.ecommerce_integration.utils.stock_picker.get_shelf_rows";
 ecommerce_integration.GET_WAREHOUSE_ROWS =
 	"ecommerce_integration.ecommerce_integration.utils.stock_picker.get_warehouse_rows";
 
@@ -56,7 +57,11 @@ ecommerce_integration.render_shelf_move_buttons = function (opts) {
 
 	// "customer" source needs a chosen warehouse; prompt instead of loading nothing.
 	if (source === "customer" && !opts.warehouse) {
-		$root.html(`<p class="text-muted small">${__("Select a warehouse for a customer above to manage their stock.")}</p>`);
+		$root.html(
+			`<p class="text-muted small">${__(
+				"Select a warehouse for a customer above to manage their stock."
+			)}</p>`
+		);
 		return;
 	}
 
@@ -69,7 +74,9 @@ ecommerce_integration.render_shelf_move_buttons = function (opts) {
 		});
 	} else {
 		const method =
-			source === "warehouse" ? ecommerce_integration.GET_WAREHOUSE_ROWS : ecommerce_integration.GET_SHELF_ROWS;
+			source === "warehouse"
+				? ecommerce_integration.GET_WAREHOUSE_ROWS
+				: ecommerce_integration.GET_SHELF_ROWS;
 		rows_promise = frappe.xcall(method);
 	}
 
@@ -81,22 +88,32 @@ ecommerce_integration.render_shelf_move_buttons = function (opts) {
 	Promise.all([
 		rows_promise.catch(() => []),
 		frappe.xcall(ecommerce_integration.GET_ENABLED_ROWS).catch(() => []),
-	]).then(([rows, enabled_rows]) => {
-		ecommerce_integration._render_shelf_rows(
-			$root,
-			frm,
-			channel,
-			fieldname,
-			rows || [],
-			source,
-			enabled_rows || []
-		);
-	}).catch(() => {
-		$root.html(`<p class="text-muted small">${__("Could not load stock.")}</p>`);
-	});
+	])
+		.then(([rows, enabled_rows]) => {
+			ecommerce_integration._render_shelf_rows(
+				$root,
+				frm,
+				channel,
+				fieldname,
+				rows || [],
+				source,
+				enabled_rows || []
+			);
+		})
+		.catch(() => {
+			$root.html(`<p class="text-muted small">${__("Could not load stock.")}</p>`);
+		});
 };
 
-ecommerce_integration._render_shelf_rows = function ($root, frm, channel, fieldname, rows, source, enabled_rows) {
+ecommerce_integration._render_shelf_rows = function (
+	$root,
+	frm,
+	channel,
+	fieldname,
+	rows,
+	source,
+	enabled_rows
+) {
 	source = source || "shelf";
 	enabled_rows = enabled_rows || [];
 	$root.data("source", source);
@@ -235,7 +252,9 @@ ecommerce_integration._render_shelf_rows = function ($root, frm, channel, fieldn
 			const raw_default = r.enabled ? Math.floor(Number(r.published_qty) || 0) : qty;
 			const default_qty = Math.min(snap_down(raw_default, step), max_qty);
 			const check_badge = r.enabled
-				? `<span class="indicator-pill green shelf-enabled-badge" title="${__("Published to webshop")}">✓</span>`
+				? `<span class="indicator-pill green shelf-enabled-badge" title="${__(
+						"Published to webshop"
+				  )}">✓</span>`
 				: "";
 			return `<tr data-idx="${i}" class="shelf-item-row${r.enabled ? " is-enabled" : ""}"
 					data-item-code="${frappe.utils.escape_html(r.item_code || "")}"
@@ -419,7 +438,8 @@ ecommerce_integration._apply_shelf_filter = function ($root) {
 		const matchShelf =
 			!shelfVal ||
 			(agg.shelves || []).some(
-				(s) => s.shelf === shelfVal || String(s.shelf).toLowerCase().indexOf(shelfLc) !== -1
+				(s) =>
+					s.shelf === shelfVal || String(s.shelf).toLowerCase().indexOf(shelfLc) !== -1
 			);
 		const show = matchItem && matchShelf;
 

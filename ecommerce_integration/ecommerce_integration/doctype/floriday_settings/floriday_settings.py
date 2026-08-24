@@ -53,21 +53,50 @@ class FloridaySettings(Document):
 	from typing import TYPE_CHECKING
 
 	if TYPE_CHECKING:
-		from ecommerce_integration.ecommerce_integration.doctype.floriday_stock_view.floriday_stock_view import FloridayStockView
-		from ecommerce_integration.ecommerce_integration.doctype.floriday_warehouse.floriday_warehouse import FloridayWarehouse
 		from frappe.types import DF
+
+		from ecommerce_integration.ecommerce_integration.doctype.floriday_stock_view.floriday_stock_view import (
+			FloridayStockView,
+		)
+		from ecommerce_integration.ecommerce_integration.doctype.floriday_warehouse.floriday_warehouse import (
+			FloridayWarehouse,
+		)
 
 		access_token: DF.LongText | None
 		api_key: DF.Data
 		at_cron_format: DF.Data | None
 		at_enabled: DF.Check
-		at_event_frequency: DF.Literal["All", "Hourly", "Daily", "Weekly", "Monthly", "Yearly", "Hourly Long", "Daily Long", "Weekly Long", "Monthly Long", "Cron"]
+		at_event_frequency: DF.Literal[
+			"All",
+			"Hourly",
+			"Daily",
+			"Weekly",
+			"Monthly",
+			"Yearly",
+			"Hourly Long",
+			"Daily Long",
+			"Weekly Long",
+			"Monthly Long",
+			"Cron",
+		]
 		at_last_run: DF.Datetime | None
 		at_next_run: DF.Datetime | None
 		base_url: DF.Data
 		batch_cron_format: DF.Data | None
 		batch_enabled: DF.Check
-		batch_event_frequency: DF.Literal["All", "Hourly", "Daily", "Weekly", "Monthly", "Yearly", "Hourly Long", "Daily Long", "Weekly Long", "Monthly Long", "Cron"]
+		batch_event_frequency: DF.Literal[
+			"All",
+			"Hourly",
+			"Daily",
+			"Weekly",
+			"Monthly",
+			"Yearly",
+			"Hourly Long",
+			"Daily Long",
+			"Weekly Long",
+			"Monthly Long",
+			"Cron",
+		]
 		batch_last_run: DF.Datetime | None
 		batch_next_run: DF.Datetime | None
 		business_unit: DF.Link | None
@@ -78,14 +107,38 @@ class FloridaySettings(Document):
 		default_farm: DF.Link | None
 		fi_cron_format: DF.Data | None
 		fi_enabled: DF.Check
-		fi_event_frequency: DF.Literal["All", "Hourly", "Daily", "Weekly", "Monthly", "Yearly", "Hourly Long", "Daily Long", "Weekly Long", "Monthly Long", "Cron"]
+		fi_event_frequency: DF.Literal[
+			"All",
+			"Hourly",
+			"Daily",
+			"Weekly",
+			"Monthly",
+			"Yearly",
+			"Hourly Long",
+			"Daily Long",
+			"Weekly Long",
+			"Monthly Long",
+			"Cron",
+		]
 		fi_last_run: DF.Datetime | None
 		fi_next_run: DF.Datetime | None
 		floriday_warehouses: DF.Table[FloridayWarehouse]
 		grant_type: DF.Data
 		of_cron_format: DF.Data | None
 		of_enabled: DF.Check
-		of_event_frequency: DF.Literal["All", "Hourly", "Daily", "Weekly", "Monthly", "Yearly", "Hourly Long", "Daily Long", "Weekly Long", "Monthly Long", "Cron"]
+		of_event_frequency: DF.Literal[
+			"All",
+			"Hourly",
+			"Daily",
+			"Weekly",
+			"Monthly",
+			"Yearly",
+			"Hourly Long",
+			"Daily Long",
+			"Weekly Long",
+			"Monthly Long",
+			"Cron",
+		]
 		of_last_run: DF.Datetime | None
 		of_next_run: DF.Datetime | None
 		of_period: DF.Int
@@ -96,19 +149,55 @@ class FloridaySettings(Document):
 		scope: DF.SmallText
 		so_cron_format: DF.Data | None
 		so_enabled: DF.Check
-		so_event_frequency: DF.Literal["All", "Hourly", "Daily", "Weekly", "Monthly", "Yearly", "Hourly Long", "Daily Long", "Weekly Long", "Monthly Long", "Cron"]
+		so_event_frequency: DF.Literal[
+			"All",
+			"Hourly",
+			"Daily",
+			"Weekly",
+			"Monthly",
+			"Yearly",
+			"Hourly Long",
+			"Daily Long",
+			"Weekly Long",
+			"Monthly Long",
+			"Cron",
+		]
 		so_last_run: DF.Datetime | None
 		so_next_run: DF.Datetime | None
 		stock_cron_format: DF.Data | None
 		stock_enabled: DF.Check
-		stock_event_frequency: DF.Literal["All", "Hourly", "Daily", "Weekly", "Monthly", "Yearly", "Hourly Long", "Daily Long", "Weekly Long", "Monthly Long", "Cron"]
+		stock_event_frequency: DF.Literal[
+			"All",
+			"Hourly",
+			"Daily",
+			"Weekly",
+			"Monthly",
+			"Yearly",
+			"Hourly Long",
+			"Daily Long",
+			"Weekly Long",
+			"Monthly Long",
+			"Cron",
+		]
 		stock_items: DF.Table[FloridayStockView]
 		stock_last_run: DF.Datetime | None
 		stock_next_run: DF.Datetime | None
 		stock_warehouse: DF.Link | None
 		supplyline_cron_format: DF.Data | None
 		supplyline_enabled: DF.Check
-		supplyline_event_frequency: DF.Literal["All", "Hourly", "Daily", "Weekly", "Monthly", "Yearly", "Hourly Long", "Daily Long", "Weekly Long", "Monthly Long", "Cron"]
+		supplyline_event_frequency: DF.Literal[
+			"All",
+			"Hourly",
+			"Daily",
+			"Weekly",
+			"Monthly",
+			"Yearly",
+			"Hourly Long",
+			"Daily Long",
+			"Weekly Long",
+			"Monthly Long",
+			"Cron",
+		]
 		supplyline_last_run: DF.Datetime | None
 		supplyline_next_run: DF.Datetime | None
 		table_wtkz: DF.Table[FloridayStockView]
@@ -788,7 +877,7 @@ def get_floriday_batch_rows():
 
 	BATCH_MULTIPLE = 200
 
-	by_code_length, by_code = _get_floriday_item_index()
+	_by_code_length, by_code = _get_floriday_item_index()
 	if not by_code:
 		return []
 
@@ -1043,7 +1132,7 @@ def get_floriday_company():
 @frappe.whitelist()
 def get_floriday_item_options():
 	"""Return Floriday Items with their stem_length / trade_item_id rows for the Add Stock dialog."""
-	by_code_length, by_code = _get_floriday_item_index()
+	_by_code_length, by_code = _get_floriday_item_index()
 	out = []
 	for item_code, rows in by_code.items():
 		out.append(

@@ -97,9 +97,9 @@ upande.shopify = {
 		}
 
 		const bits = [
-			`<span style="color: var(--${state.colour}-600); font-weight: 600;">● ${frappe.utils.escape_html(
-				state.label
-			)}</span>`,
+			`<span style="color: var(--${
+				state.colour
+			}-600); font-weight: 600;">● ${frappe.utils.escape_html(state.label)}</span>`,
 		];
 
 		if (frm.doc.token_expires_on) {
@@ -126,7 +126,7 @@ upande.shopify = {
 				? `<span style="color: var(--orange-600); font-weight: 600;">${__(
 						"missing scopes: {0}",
 						[frappe.utils.escape_html(gaps.join(", "))]
-					)}</span>`
+				  )}</span>`
 				: __("all required scopes granted")
 		);
 
@@ -168,20 +168,30 @@ frappe.ui.form.on("Shopify Settings", {
 		frappe.msgprint({
 			title: __("How to grant the missing scopes"),
 			message: `
-				<p>${__("No API can set these — it has to be done in Shopify's Dev Dashboard. It does not need the Shopify CLI.")}</p>
+				<p>${__(
+					"No API can set these — it has to be done in Shopify's Dev Dashboard. It does not need the Shopify CLI."
+				)}</p>
 				<ol>
-					<li>${__("Open")} <a href="https://dev.shopify.com/dashboard" target="_blank">dev.shopify.com/dashboard</a>
+					<li>${__(
+						"Open"
+					)} <a href="https://dev.shopify.com/dashboard" target="_blank">dev.shopify.com/dashboard</a>
 						&rarr; <b>Apps</b> &rarr; <b>Upande Ecommerce Integration</b>
 						${client ? `<br><small>${__("Client ID")} <code>${client}</code></small>` : ""}</li>
 					<li><b>${__("Versions")}</b> &rarr; <b>${__("Create a version")}</b>
-						<br><small>${__("Scopes are set on a version. The Settings page has no scopes field.")}</small></li>
+						<br><small>${__(
+							"Scopes are set on a version. The Settings page has no scopes field."
+						)}</small></li>
 					<li>${__("In the app scopes field add")}
 						<code>read_orders</code>, <code>read_products</code>, <code>read_customers</code></li>
 					<li>${__("Select")} <b>${__("Release")}</b></li>
-					<li>${__("Approve the new scopes in the store admin — a released version is NOT applied to installed stores automatically")}</li>
+					<li>${__(
+						"Approve the new scopes in the store admin — a released version is NOT applied to installed stores automatically"
+					)}</li>
 					<li>${__("Come back and press")} <b>${__("Test Connection")}</b></li>
 				</ol>
-				<p><small>${__("Watch the two fields here: Requested Scopes fills in once the version is released; Granted Scopes fills in once the store approves.")}</small></p>`,
+				<p><small>${__(
+					"Watch the two fields here: Requested Scopes fills in once the version is released; Granted Scopes fills in once the store approves."
+				)}</small></p>`,
 		});
 	},
 
@@ -294,7 +304,9 @@ frappe.ui.form.on("Shopify Settings", {
 					message:
 						frappe.utils.escape_html(res.summary || __("No summary returned")) +
 						"<br><br>" +
-						__("Review each row: only Box lines are allocated, and each box needs its stem count."),
+						__(
+							"Review each row: only Box lines are allocated, and each box needs its stem count."
+						),
 				});
 				frm.reload_doc();
 			})

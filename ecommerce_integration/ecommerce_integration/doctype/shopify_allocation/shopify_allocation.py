@@ -106,7 +106,6 @@ class ShopifyAllocation(Document):
 			frappe.throw(f"{self.name} already has a pick list: {existing}.")
 
 		ensure_packing_link_fields()
-		settings = frappe.get_cached_doc("Shopify Settings")
 
 		pick = frappe.new_doc("Order Pick List")
 		pick.custom_shopify_allocation = self.name
@@ -210,9 +209,7 @@ class ShopifyAllocation(Document):
 		Nothing here defines those doctypes, so on a site without that app this is a
 		clear message rather than a stack trace about a missing table.
 		"""
-		missing = [
-			dt for dt in ("Order Pick List", "Farm Pack List") if not frappe.db.exists("DocType", dt)
-		]
+		missing = [dt for dt in ("Order Pick List", "Farm Pack List") if not frappe.db.exists("DocType", dt)]
 		if missing:
 			frappe.throw(
 				f"{', '.join(missing)} is not on this site. Picking and packing live in the "

@@ -242,10 +242,8 @@ def _apply_order(doc, node, settings, attributes):
 	# fallback set) and this runs again on every update to the order, so assigning it
 	# unconditionally would wipe a customer somebody linked by hand.
 	doc.customer = (
-		_resolve_customer(doc.customer_email, shopify_customer.get("displayName"), settings)
-		or doc.customer
+		_resolve_customer(doc.customer_email, shopify_customer.get("displayName"), settings) or doc.customer
 	)
-
 
 	total = ((node.get("currentTotalPriceSet") or {}).get("shopMoney")) or {}
 	if total.get("currencyCode"):
@@ -305,7 +303,9 @@ def _apply_order(doc, node, settings, attributes):
 	# An open-ended subscription has no last delivery. Left to end_date_for with a
 	# count of 1 it would get an end date equal to its start date, and the expiry job
 	# would retire it the day after it began.
-	doc.end_date = None if doc.is_open_ended else end_date_for(doc.start_date, doc.frequency, doc.duration_boxes)
+	doc.end_date = (
+		None if doc.is_open_ended else end_date_for(doc.start_date, doc.frequency, doc.duration_boxes)
+	)
 	if not doc.requested_delivery_date:
 		doc.requested_delivery_date = doc.first_delivery_date
 

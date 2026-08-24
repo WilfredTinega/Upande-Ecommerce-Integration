@@ -231,12 +231,14 @@ def _find_or_create_webshop_item_prices(item):
 			doc.save()
 		return doc
 
-	doc = frappe.get_doc({
-		"doctype": WEBSHOP_ITEM_PRICES,
-		"item_code": item.item_code,
-		"item_name": item.item_name,
-		"item_group": item.item_group,
-	})
+	doc = frappe.get_doc(
+		{
+			"doctype": WEBSHOP_ITEM_PRICES,
+			"item_code": item.item_code,
+			"item_name": item.item_name,
+			"item_group": item.item_group,
+		}
+	)
 	doc.insert()
 	return doc
 
@@ -296,18 +298,18 @@ def set_webshop_enabled_stock(items, enabled=1, source_warehouse=None):
 		item_code = (entry.get("item_code") or "").strip()
 		if not item_code:
 			continue
-		by_item.setdefault(item_code, []).append({
-			"stem_length": (entry.get("stem_length") or "").strip(),
-			"qty": flt(entry.get("qty")),
-		})
+		by_item.setdefault(item_code, []).append(
+			{
+				"stem_length": (entry.get("stem_length") or "").strip(),
+				"qty": flt(entry.get("qty")),
+			}
+		)
 
 	updated = 0
 	capped = 0
 	touched_items = []
 	for item_code, lengths in by_item.items():
-		item = frappe.db.get_value(
-			"Item", item_code, ["name", "item_name", "item_group"], as_dict=True
-		)
+		item = frappe.db.get_value("Item", item_code, ["name", "item_name", "item_group"], as_dict=True)
 		if not item:
 			continue
 		item.item_code = item.name

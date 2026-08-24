@@ -351,7 +351,7 @@ def update_access_token():
 		if token != "":
 			frappe.db.set_value("Biflorica Setting", settings_name, "access_token", token)
 			frappe.db.commit()
-			_logger.info(f"[Biflorica Token Update] Access token updated")
+			_logger.info("[Biflorica Token Update] Access token updated")
 			return {"success": True, "message": "Access token updated successfully"}
 		else:
 			frappe.log_error("Token not found in API response", "Biflorica Token Update")
@@ -1299,7 +1299,7 @@ def process_predeals():
 	approves that predeal on Biflorica — so submit == approve.
 	"""
 	try:
-		settings = _get_settings()
+		_get_settings()  # raises if Biflorica Setting is not configured
 
 		stage1 = get_predeals()
 		if not stage1.get("success"):

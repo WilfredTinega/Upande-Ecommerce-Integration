@@ -1,7 +1,8 @@
 // Copyright (c) 2026, Upande LTD and contributors
 // For license information, please see license.txt
 
-const METHOD_BASE = "ecommerce_integration.ecommerce_integration.doctype.biflorica_setting.biflorica_setting";
+const METHOD_BASE =
+	"ecommerce_integration.ecommerce_integration.doctype.biflorica_setting.biflorica_setting";
 const CUSTOM_FIELDS_API =
 	"ecommerce_integration.ecommerce_integration.doctype.biflorica_setting.biflorica_custom_fields";
 
@@ -67,13 +68,19 @@ function render_custom_fields_status(frm) {
 					const ok = f.present;
 					const dot = ok ? "🟢" : f.doctype_missing ? "⚪" : "🔴";
 					const tag = f.optional ? " <i>(optional)</i>" : "";
-					return `<tr><td>${dot}</td><td>${f.dt}</td><td><code>${f.fieldname}</code></td><td>${f.fieldtype || ""}${tag}</td></tr>`;
+					return `<tr><td>${dot}</td><td>${f.dt}</td><td><code>${
+						f.fieldname
+					}</code></td><td>${f.fieldtype || ""}${tag}</td></tr>`;
 				})
 				.join("");
 			const missing = rows.filter((f) => !f.present && !f.doctype_missing).length;
 			wrapper.$wrapper.html(`
 				<div style="margin-bottom:8px;color:var(--text-muted)">
-					${missing ? `${missing} field(s) missing — click "Create Missing Custom Fields".` : "All custom fields present."}
+					${
+						missing
+							? `${missing} field(s) missing — click "Create Missing Custom Fields".`
+							: "All custom fields present."
+					}
 				</div>
 				<table class="table table-bordered" style="font-size:var(--text-sm)">
 					<thead><tr><th></th><th>DocType</th><th>Field</th><th>Type</th></tr></thead>
@@ -178,7 +185,7 @@ function call_biflorica(frm, button_field, method, label, args, on_success) {
 		},
 		error: function () {
 			stop_progress();
-		}
+		},
 	});
 }
 
@@ -204,7 +211,11 @@ frappe.ui.form.on("Biflorica Setting", {
 			callback(r) {
 				const s = (r.message || {}).summary || {};
 				toast(
-					__("Created {0}, skipped {1}, errors {2}", [s.created || 0, s.skipped || 0, s.errors || 0]),
+					__("Created {0}, skipped {1}, errors {2}", [
+						s.created || 0,
+						s.skipped || 0,
+						s.errors || 0,
+					]),
 					s.errors ? "orange" : "green"
 				);
 				render_custom_fields_status(frm);
@@ -223,7 +234,12 @@ frappe.ui.form.on("Biflorica Setting", {
 	},
 
 	update_access_token(frm) {
-		call_biflorica(frm, "update_access_token", "update_access_token", "Refreshing access token");
+		call_biflorica(
+			frm,
+			"update_access_token",
+			"update_access_token",
+			"Refreshing access token"
+		);
 	},
 
 	refresh_stock(frm) {
@@ -324,27 +340,36 @@ frappe.ui.form.on("Biflorica Setting", {
 	},
 
 	get_predeals(frm) {
-		call_biflorica(frm, "get_predeals", "get_predeals", "Fetching predeals", {}, function (res) {
-			const s = res.summary || {};
-			const created = s.created || [];
-			const existing = s.existing || [];
-			const failed = s.failed || [];
+		call_biflorica(
+			frm,
+			"get_predeals",
+			"get_predeals",
+			"Fetching predeals",
+			{},
+			function (res) {
+				const s = res.summary || {};
+				const created = s.created || [];
+				const existing = s.existing || [];
+				const failed = s.failed || [];
 
-			if (created.length) {
-				toast(
-					__("Draft Sales Orders created: {0}", [created.map((c) => c.sales_order).join(", ")]),
-					"green"
-				);
+				if (created.length) {
+					toast(
+						__("Draft Sales Orders created: {0}", [
+							created.map((c) => c.sales_order).join(", "),
+						]),
+						"green"
+					);
+				}
+				if (existing.length) {
+					const lines = existing.map((e) => `${e.box_label} → ${e.sales_order}`);
+					toast(__("Already exists: {0}", [lines.join(", ")]), "orange");
+				}
+				if (failed.length) {
+					const lines = failed.map((f) => `${f.box_label} (${f.reason || "rejected"})`);
+					toast(__("Failed: {0}", [lines.join(", ")]), "red");
+				}
 			}
-			if (existing.length) {
-				const lines = existing.map((e) => `${e.box_label} → ${e.sales_order}`);
-				toast(__("Already exists: {0}", [lines.join(", ")]), "orange");
-			}
-			if (failed.length) {
-				const lines = failed.map((f) => `${f.box_label} (${f.reason || "rejected"})`);
-				toast(__("Failed: {0}", [lines.join(", ")]), "red");
-			}
-		});
+		);
 	},
 
 	approve_deal(frm) {
@@ -365,15 +390,20 @@ frappe.ui.form.on("Biflorica Setting", {
 						const submitFailed = s.submit_failed || [];
 
 						if (submitted.length) {
-							toast(__("Submitted + approved: {0}", [submitted.join(", ")]), "green");
+							toast(
+								__("Submitted + approved: {0}", [submitted.join(", ")]),
+								"green"
+							);
 						}
 						if (submitFailed.length) {
-							const lines = submitFailed.map((f) => `${f.sales_order} (${f.reason || "failed"})`);
+							const lines = submitFailed.map(
+								(f) => `${f.sales_order} (${f.reason || "failed"})`
+							);
 							toast(__("Submit failed: {0}", [lines.join(", ")]), "red");
 						}
 					}
 				);
 			}
 		);
-	}
+	},
 });

@@ -46,7 +46,9 @@ frappe.ui.form.on("Shopify Order", {
 
 		if (!frm.doc.needs_allocation) {
 			frm.dashboard.add_comment(
-				__("No box lines on this order — fees and packaging only, so nothing to allocate."),
+				__(
+					"No box lines on this order — fees and packaging only, so nothing to allocate."
+				),
 				"blue",
 				true
 			);

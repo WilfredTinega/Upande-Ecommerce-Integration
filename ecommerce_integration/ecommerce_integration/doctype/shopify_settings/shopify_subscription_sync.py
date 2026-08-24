@@ -138,9 +138,7 @@ def _resolve_customer(email, display_name, settings):
 		except Exception as e:
 			# Creation failing must not also cost the order. Fall through to the
 			# fallback customer and leave the reason on record.
-			frappe.log_error(
-				cstr(e), f"Shopify: could not create a customer for {email or display_name}"
-			)
+			frappe.log_error(cstr(e), f"Shopify: could not create a customer for {email or display_name}")
 
 	return settings.default_customer
 

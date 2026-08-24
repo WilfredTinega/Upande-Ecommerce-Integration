@@ -62,9 +62,9 @@ def _alert(message, indicator="orange"):
 # Generic stem-length + per-length pricing helpers, vendored in this app's utils
 # (they read only ERPNext Item Price / Item Attribute data). Re-exported here so
 # the rest of this integration keeps importing them from floriday_items unchanged.
-from ecommerce_integration.ecommerce_integration.utils.stem_length import (  # noqa: F401
-	_normalize_stem_length,
+from ecommerce_integration.ecommerce_integration.utils.stem_length import (
 	_item_price_rates_for_list,
+	_normalize_stem_length,
 	_stem_length_rates_from_item_prices,
 	_stem_length_rates_from_variants,
 )
@@ -82,6 +82,7 @@ class FloridayItems(Document):
 			# → first enabled USD Selling list, with a Webshop Settings override if
 			# that app happens to be present).
 			from ecommerce_integration.ecommerce_integration.utils import _resolve_price_list
+
 			price_list = _resolve_price_list()
 
 		has_variants = frappe.db.get_value("Item", self.item_code, "has_variants")
@@ -159,9 +160,7 @@ def _fetch_floriday_trade_items():
 		frappe.throw(f"Floriday request failed: {e}")
 
 	if response.status_code != 200:
-		frappe.throw(
-			f"Floriday returned {response.status_code}: {response.text[:500]}"
-		)
+		frappe.throw(f"Floriday returned {response.status_code}: {response.text[:500]}")
 
 	data = response.json()
 	trade_items = data.get("results", data) if isinstance(data, dict) else data
@@ -200,12 +199,14 @@ def _find_or_create_floriday_item(item):
 			doc.save()
 		return doc, False
 
-	doc = frappe.get_doc({
-		"doctype": "Floriday Items",
-		"item_code": item.item_code,
-		"item_name": item.item_name,
-		"item_group": item.item_group,
-	})
+	doc = frappe.get_doc(
+		{
+			"doctype": "Floriday Items",
+			"item_code": item.item_code,
+			"item_name": item.item_name,
+			"item_group": item.item_group,
+		}
+	)
 	doc.insert()
 	return doc, True
 
@@ -335,11 +336,13 @@ def update_trade_item_ids(force=False):
 			for row in doc.table_ppvq:
 				total_rows += 1
 				if not row.trade_item_id:
-					unmatched.append({
-						"item_code": doc.item_code,
-						"item_name": doc.item_name,
-						"stem_length": row.stem_length,
-					})
+					unmatched.append(
+						{
+							"item_code": doc.item_code,
+							"item_name": doc.item_name,
+							"stem_length": row.stem_length,
+						}
+					)
 			if matched:
 				doc.save()
 				total_matched += matched
@@ -351,10 +354,7 @@ def update_trade_item_ids(force=False):
 			)
 
 	if unmatched and total_matched < total_rows:
-		sample_lines = [
-			f"{u['item_code']} ({u['item_name']}) / {u['stem_length']}"
-			for u in unmatched[:10]
-		]
+		sample_lines = [f"{u['item_code']} ({u['item_name']}) / {u['stem_length']}" for u in unmatched[:10]]
 		sample_keys = list(article_lookup.keys())[:10]
 		frappe.log_error(
 			"Unmatched rows (sample):\n"
