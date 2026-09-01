@@ -83,10 +83,12 @@ class TestRenameDeliveryPointFloridayId(IntegrationTestCase):
 		with _Run(old_field="CF-1", columns=(renamer.OLD, renamer.NEW), rows_to_move=2) as run:
 			renamer.execute()
 
-		self.assertIn(ALTER, run.ddl_statements)
 		self.assertFalse(
 			[q for q in run.plain_sql_statements if "ALTER TABLE" in q.upper()],
-			"the DDL must not be issued through frappe.db.sql",
+			"the DDL must not be issued through frappe.db.sql — that is the bug",
+		)
+		self.assertIn(
+			ALTER, run.ddl_statements, f"nothing went through sql_ddl; sql got {run.plain_sql_statements}"
 		)
 
 	def test_it_copies_the_mappings_before_dropping_the_column(self):
@@ -102,7 +104,9 @@ class TestRenameDeliveryPointFloridayId(IntegrationTestCase):
 		with _Run(old_field=None, columns=(renamer.OLD, renamer.NEW)) as run:
 			renamer.execute()
 
-		self.assertIn(ALTER, run.ddl_statements)
+		self.assertIn(
+			ALTER, run.ddl_statements, f"nothing went through sql_ddl; sql got {run.plain_sql_statements}"
+		)
 		self.assertFalse(run.deleted)
 
 	def test_nothing_to_do_touches_nothing(self):

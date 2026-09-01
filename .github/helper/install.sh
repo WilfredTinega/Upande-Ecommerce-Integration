@@ -1,9 +1,12 @@
 #!/bin/bash
 # Mirrors the ERPNext CI install flow: clone Frappe, init a bench, create the
-# test DB, pull the dependency apps (payments + erpnext + upande_webshop) and
-# this app, then reinstall + install-app. Reproduces a real deploy.
+# test DB, pull the dependency apps (payments + erpnext) and this app, then
+# reinstall + install-app. Reproduces a real deploy.
 #
-# Dependency chain: ecommerce_integration -> upande_webshop -> erpnext + payments.
+# Dependency chain: ecommerce_integration -> erpnext + payments. Nothing else.
+# upande_webshop is deliberately NOT here: this app declares no required_apps and
+# reads none of its DocTypes, so pulling it in would test a coupling that does
+# not exist and would fail this build whenever that repo broke.
 #
 # The DB credentials (root / test_frappe / admin) are the same throwaway values
 # ERPNext and HRMS use in their own CI — the MariaDB service is created fresh
@@ -23,8 +26,6 @@ frappeuser=${FRAPPE_USER:-"frappe"}
 frappebranch=${FRAPPE_BRANCH:-"version-15"}
 erpnextbranch=${ERPNEXT_BRANCH:-"version-15"}
 paymentsbranch=${PAYMENTS_BRANCH:-"version-15"}
-webshoprepo=${WEBSHOP_REPO:-"https://github.com/WilfredTinega/Upande-Webshop.git"}
-webshopbranch=${WEBSHOP_BRANCH:-"main"}
 
 git clone "https://github.com/${frappeuser}/frappe" --branch "${frappebranch}" --depth 1
 bench init --skip-assets --frappe-path ~/frappe --python "$(which python)" frappe-bench
@@ -58,7 +59,6 @@ sed -i 's/redis_socketio:/# redis_socketio:/g' Procfile
 
 bench get-app "https://github.com/${frappeuser}/payments" --branch "$paymentsbranch"
 bench get-app "https://github.com/${frappeuser}/erpnext" --branch "$erpnextbranch" --resolve-deps
-bench get-app upande_webshop "$webshoprepo" --branch "$webshopbranch"
 bench get-app ecommerce_integration "${GITHUB_WORKSPACE}"
 bench setup requirements --dev
 
