@@ -1,0 +1,23 @@
+{
+ "action": "Update Settings",
+ "action_label": "Connect Shopify and test the connection",
+ "creation": "2026-08-28 15:24:43.135894",
+ "description": "Shop domain, API version, Client ID and Secret. The app mints its own Admin API token with Shopify's `client_credentials` grant \u2014 no merchant browser step \u2014 and treats it as a ~24-hour cache.\n\nUse **Test Connection** before enabling the order and subscription polls. Failures are kept in Shopify API Error Log for 30 days.",
+ "docstatus": 0,
+ "doctype": "Onboarding Step",
+ "field": "shop_domain",
+ "idx": 0,
+ "is_complete": 0,
+ "is_single": 1,
+ "is_skipped": 0,
+ "modified": "2026-08-28 16:21:21.878853",
+ "modified_by": "Administrator",
+ "name": "Connect Shopify",
+ "owner": "Administrator",
+ "reference_document": "Shopify Settings",
+ "show_form_tour": 0,
+ "show_full_form": 0,
+ "title": "Connect Shopify",
+ "validate_action": 1,
+ "value_to_validate": "%"
+}

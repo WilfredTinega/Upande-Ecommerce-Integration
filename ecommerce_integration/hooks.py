@@ -14,9 +14,10 @@ use_json_request_body = True
 # ------------------
 
 # This app is self-contained: it declares no dependency on any other custom app.
-# It reads a few doctypes that upande_webshop also ships (Webshop Item Prices,
-# Stem Length Price, Delivery Point, ...) but only when they are present on the
-# site — every such read is guarded, so the app installs and runs standalone.
+# It reads a few doctypes the post-harvest suite ships (Shelf Item, Stem Length,
+# Customer pricing, ...) but only when they are present on the site — every such
+# read is guarded, so the app installs and runs standalone. It reads nothing at
+# all from upande_webshop.
 # required_apps = []
 
 # Each item in the list will be shown as an app in the apps page

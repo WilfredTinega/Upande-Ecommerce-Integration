@@ -373,7 +373,7 @@ frappe.ui.form.on("Floriday Settings", {
 	},
 
 	create_batch(frm) {
-		// Batch the items ENABLED on the Stock tab (Stem Length Price.enabled = 1),
+		// Batch the items ENABLED on the Stock tab (Ecommerce Enabled Stock.enabled = 1),
 		// each at its published qty floored to 200. The server resolves the Floriday
 		// trade_item_id per (item, length) and drops rows without a mapping or < 200.
 		const stop_progress = start_inline_progress(frm, "create_batch", "Create Batches");

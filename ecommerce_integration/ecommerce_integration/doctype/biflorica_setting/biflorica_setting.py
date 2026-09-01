@@ -3,6 +3,7 @@
 
 import json
 from datetime import datetime
+from urllib.parse import urljoin
 
 import frappe
 import requests
@@ -20,6 +21,24 @@ from ecommerce_integration.ecommerce_integration.doctype.biflorica_setting.biflo
 from ecommerce_integration.ecommerce_integration.utils import create_orders_as_quotation
 
 _logger = frappe.logger("biflorica", allow_site=True)
+
+
+def deal_po_ref(deal_id, kind="deal"):
+	"""The po_no this app stamps for one Biflorica deal/predeal."""
+	prefix = "BIFLORICA-PREDEAL" if kind == "predeal" else "BIFLORICA"
+	return f"{prefix}-{deal_id}"
+
+
+def deal_po_refs(deal_id):
+	"""Every po_no a given Biflorica id could already be stored under.
+
+	An approved predeal KEEPS ITS ID and simply moves from /deals/predeal into
+	/deals. Looking only in the current kind's namespace imported it twice — once
+	as BIFLORICA-PREDEAL-25 from the predeal, then again as BIFLORICA-25 when the
+	approved predeal reappeared as a deal. Checking both means one Biflorica id
+	can only ever produce one order.
+	"""
+	return [deal_po_ref(deal_id, "deal"), deal_po_ref(deal_id, "predeal")]
 
 
 def _biflorica_deal_exists(deal_ref):
@@ -61,6 +80,132 @@ SCHEDULER_TASKS = [
 
 
 class BifloricaSetting(Document):
+	# begin: auto-generated types
+	# This code is auto-generated. Do not modify anything in this block.
+
+	from typing import TYPE_CHECKING
+
+	if TYPE_CHECKING:
+		from ecommerce_integration.ecommerce_integration.doctype.biflorica_offer_view.biflorica_offer_view import (
+			BifloricaOfferView,
+		)
+		from ecommerce_integration.ecommerce_integration.doctype.biflorica_stock_view.biflorica_stock_view import (
+			BifloricaStockView,
+		)
+		from frappe.types import DF
+
+		access_token: DF.LongText | None
+		at_cron_format: DF.Data | None
+		at_enabled: DF.Check
+		at_event_frequency: DF.Literal[
+			"All",
+			"Hourly",
+			"Daily",
+			"Weekly",
+			"Monthly",
+			"Yearly",
+			"Hourly Long",
+			"Daily Long",
+			"Weekly Long",
+			"Monthly Long",
+			"Cron",
+		]
+		at_last_run: DF.Datetime | None
+		at_next_run: DF.Datetime | None
+		base_url: DF.Data
+		create_orders_as_quotation: DF.Check
+		customer: DF.Link
+		deals_business_unit: DF.Link | None
+		deals_company: DF.Link | None
+		deals_consignee: DF.Link | None
+		deals_cron_format: DF.Data | None
+		deals_customer: DF.Link | None
+		deals_enabled: DF.Check
+		deals_event_frequency: DF.Literal[
+			"All",
+			"Hourly",
+			"Daily",
+			"Weekly",
+			"Monthly",
+			"Yearly",
+			"Hourly Long",
+			"Daily Long",
+			"Weekly Long",
+			"Monthly Long",
+			"Cron",
+		]
+		deals_farm: DF.Link | None
+		deals_from_date: DF.Datetime | None
+		deals_last_run: DF.Datetime | None
+		deals_limit: DF.Int
+		deals_mutation_date: DF.Datetime | None
+		deals_next_run: DF.Datetime | None
+		deals_offset: DF.Int
+		deals_source_warehouse: DF.Link | None
+		deals_to_date: DF.Datetime | None
+		farm: DF.Data | None
+		live_offers: DF.Table[BifloricaOfferView]
+		offer_cron_format: DF.Data | None
+		offer_enabled: DF.Check
+		offer_event_frequency: DF.Literal[
+			"All",
+			"Hourly",
+			"Daily",
+			"Weekly",
+			"Monthly",
+			"Yearly",
+			"Hourly Long",
+			"Daily Long",
+			"Weekly Long",
+			"Monthly Long",
+			"Cron",
+		]
+		offer_last_run: DF.Datetime | None
+		offer_next_run: DF.Datetime | None
+		password: DF.Password
+		platform: DF.Data
+		predeal_cron_format: DF.Data | None
+		predeal_enabled: DF.Check
+		predeal_event_frequency: DF.Literal[
+			"All",
+			"Hourly",
+			"Daily",
+			"Weekly",
+			"Monthly",
+			"Yearly",
+			"Hourly Long",
+			"Daily Long",
+			"Weekly Long",
+			"Monthly Long",
+			"Cron",
+		]
+		predeal_from_date: DF.Datetime | None
+		predeal_last_run: DF.Datetime | None
+		predeal_limit: DF.Int
+		predeal_mutation_date: DF.Datetime | None
+		predeal_next_run: DF.Datetime | None
+		predeal_offset: DF.Int
+		predeal_to_date: DF.Datetime | None
+		price_list: DF.Link | None
+		publish_enabled_stock_only: DF.Check
+		stock_items: DF.Table[BifloricaStockView]
+		token_url: DF.Data | None
+		use_shelf_stock: DF.Check
+		username: DF.Data
+		warehouse: DF.Link
+	# end: auto-generated types
+
+	def validate(self):
+		# A warning, not a throw: the operator may be mid-edit, and the host map
+		# only knows the platforms it has been confirmed against.
+		from ecommerce_integration.ecommerce_integration.doctype.biflorica_setting.biflorica_customer_offer import (
+			platform_host_mismatch,
+		)
+
+		mismatch = platform_host_mismatch(self)
+		if mismatch:
+			frappe.msgprint(mismatch, title=_("Check Biflorica host"), indicator="orange")
+
 	def onload(self):
 		self._populate_scheduler_run_times()
 
@@ -290,6 +435,29 @@ def _api_call(method, path, settings, payload=None, params=None):
 	}
 
 
+def _read_api_password(settings) -> tuple[str, bool]:
+	"""Return (password, decrypt_failed) for the Biflorica Setting password.
+
+	A Password field lives encrypted in `__Auth`, keyed by the site's
+	encryption_key. When that key no longer matches what encrypted the row —
+	a site restored without its original site_config.json, or a key that was
+	regenerated — frappe.throw()s inside the decrypt. raise_exception=False
+	swallows the exception, but frappe.throw has already queued its message for
+	the client, which surfaces as an unrelated "check site_config.json" dialog.
+	Drop that message so the caller can report something actionable instead.
+	"""
+	log_length = len(frappe.message_log or [])
+	password = settings.get_password("password", raise_exception=False)
+	if password:
+		return password, False
+
+	leaked = len(frappe.message_log or []) - log_length
+	for _ in range(max(leaked, 0)):
+		frappe.clear_last_message()
+
+	return "", leaked > 0
+
+
 @frappe.whitelist()
 def update_access_token():
 	try:
@@ -297,14 +465,36 @@ def update_access_token():
 		settings = frappe.get_doc("Biflorica Setting", settings_name)
 
 		base_url = settings.base_url or ""
+		token_url = (settings.token_url or "").strip()
 		username = settings.username or ""
-		password = settings.password or ""
+		password, decrypt_failed = _read_api_password(settings)
 
-		if not (base_url and username and password):
-			frappe.log_error("Missing base_url, username, or password", "Biflorica Token Update")
-			return {"success": False, "message": "Missing base_url, username, or password"}
+		if decrypt_failed:
+			frappe.log_error(
+				"Stored password could not be decrypted; the site encryption key no longer "
+				"matches the value in __Auth",
+				"Biflorica Token Update",
+			)
+			return {
+				"success": False,
+				"message": "Stored password could not be decrypted. Re-enter the Password on "
+				"Biflorica Setting and save.",
+			}
 
-		api_url = base_url.rstrip("/") + "/auth/token"
+		if not (username and password and (token_url or base_url)):
+			frappe.log_error("Missing Token URL/Base URL, username, or password", "Biflorica Token Update")
+			return {
+				"success": False,
+				"message": "Missing Token URL (or Base URL), username, or password",
+			}
+
+		# Token URL wins when set, so a relocated auth endpoint can be retargeted
+		# from the form. A scheme-less value ("/apiv3/auth/token") is treated as a
+		# path on Base URL rather than passed to requests as-is.
+		if token_url:
+			api_url = token_url if "://" in token_url else urljoin(base_url, token_url)
+		else:
+			api_url = base_url.rstrip("/") + "/auth/token"
 		headers = {"accept": "application/json", "Content-Type": "application/json"}
 		payload = json.dumps({"username": username, "password": password})
 
@@ -314,7 +504,7 @@ def update_access_token():
 			response = http_response.json()
 		except ValueError:
 			frappe.log_error(
-				f"Non-JSON response ({http_response.status_code}): {http_response.text[:500]}",
+				f"Non-JSON response from {api_url} ({http_response.status_code}): {http_response.text[:500]}",
 				"Biflorica Token Update",
 			)
 			return {
@@ -324,7 +514,7 @@ def update_access_token():
 
 		if http_response.status_code not in (200, 201):
 			frappe.log_error(
-				f"Auth failed ({http_response.status_code}): {http_response.text[:500]}",
+				f"Auth failed at {api_url} ({http_response.status_code}): {http_response.text[:500]}",
 				"Biflorica Token Update",
 			)
 			return {"success": False, "message": f"Auth failed with status {http_response.status_code}"}
@@ -336,7 +526,7 @@ def update_access_token():
 		body_status = str((response or {}).get("status") or "").lower()
 		if (body_code is not None and int(body_code) not in (200, 201)) or body_status == "error":
 			frappe.log_error(
-				f"Auth rejected (body code {body_code}): {http_response.text[:500]}",
+				f"Auth rejected at {api_url} (body code {body_code}): {http_response.text[:500]}",
 				"Biflorica Token Update",
 			)
 			if body_code == 401:
@@ -382,8 +572,12 @@ def refresh_stock():
 				continue
 
 			item_code = item.get("item_code")
-			price = get_item_price(item_code)
-			stem_length = get_stem_length_from_stock_entry(item_code, settings.warehouse)
+			# Shelf rows already know their stem length; only warehouse rows have
+			# to be traced back through the stock ledger for one.
+			stem_length = item.get("stem_length") or get_stem_length_from_stock_entry(
+				item_code, settings.warehouse
+			)
+			price = get_item_price(item_code, stem_length=stem_length, item_group=item.get("item_group"))
 			variety = get_biflorica_flower_variety(item, "Rose")
 			uom = frappe.db.get_value("Item", item_code, "stock_uom")
 
@@ -444,10 +638,19 @@ def post_offers(
 		failed_varieties = []
 
 		if not parsed_results and api_succeeded and posted_offers:
-			# Biflorica returns an EMPTY 200 body when every offer is accepted;
-			# it only returns a per-offer JSON array when there are errors. So an
-			# empty body on a successful call means all posted offers went through.
-			success_varieties = [(o.get("variety") or "(unknown)") for o in posted_offers]
+			# Reached only when the API reported success AND returned a body we could
+			# not parse into per-offer results. An empty body is NOT success — it is
+			# rejected upstream in post_to_biflorica_api, which is why this no longer
+			# counts the posted offers as accepted. Anything landing here is
+			# unverifiable, so it is reported as failed rather than assumed good.
+			success_varieties = []
+			failed_varieties = [
+				{
+					"variety": o.get("variety") or "(unknown)",
+					"reason": "no confirmation returned by Biflorica",
+				}
+				for o in posted_offers
+			]
 		else:
 			for idx, item_result in enumerate(parsed_results or []):
 				if not isinstance(item_result, dict):
@@ -485,12 +688,24 @@ def post_offers(
 
 		overall_success = bool(api_succeeded) and not failed_varieties
 
+		# One misconfigured setting rejects every offer for the same reason. Say it
+		# once, and say which setting — repeating an identical reason per variety
+		# buries the one fact the operator can act on.
+		shared_reason = _shared_failure_reason(failed_varieties, len(posted_offers))
+		if shared_reason:
+			summary["shared_reason"] = shared_reason
+			summary["settings_hint"] = _settings_hint_for(shared_reason, _get_settings())
+
 		if success_varieties and failed_varieties:
 			message = f"Posted {len(success_varieties)}, failed {len(failed_varieties)}"
 		elif success_varieties:
 			message = f"Posted {len(success_varieties)} offer(s)"
 		elif failed_varieties:
 			message = f"All {len(failed_varieties)} offer(s) failed"
+			if summary.get("settings_hint"):
+				message = summary["settings_hint"]
+			elif shared_reason:
+				message = f"All {len(failed_varieties)} offer(s) failed — {shared_reason}"
 		else:
 			message = api_response.get("message") or "No offers processed"
 
@@ -503,6 +718,52 @@ def post_offers(
 	except Exception as e:
 		frappe.log_error(str(e), "Biflorica Post Offers Error")
 		return {"success": False, "message": str(e)}
+
+
+# Biflorica reports a rejected *account-level* value (the farm, chiefly) against
+# every offer in the request, with `result: "error"` rather than `not_validate`.
+# The message it uses for an unresolvable farm is "Not parsed Farms".
+_SETTINGS_FIELD_BY_ERROR_KEY = {
+	"farm": ("farm", "Farm"),
+	"platform": ("platform", "Platform"),
+}
+
+
+def _shared_failure_reason(failed_varieties, posted_count):
+	"""The one reason behind EVERY failure, or None when they differ.
+
+	Only meaningful when nothing succeeded: a reason shared by some but not all
+	offers is genuinely per-offer and belongs in the per-variety list.
+	"""
+	if not failed_varieties or len(failed_varieties) < posted_count:
+		return None
+	reasons = {f.get("reason") for f in failed_varieties}
+	if len(reasons) != 1:
+		return None
+	return next(iter(reasons)) or None
+
+
+def _settings_hint_for(reason, settings):
+	"""Actionable text naming the setting to change, or None.
+
+	Biflorica exposes no endpoint that lists valid farms (`/farms` answers "This
+	operation is not implemented"), so the value has to come from the operator's
+	Biflorica account — which is exactly what this says.
+	"""
+	if not reason:
+		return None
+	key = str(reason).split(":", 1)[0].strip().lower()
+	field = _SETTINGS_FIELD_BY_ERROR_KEY.get(key)
+	if not field:
+		return None
+
+	fieldname, label = field
+	sent = settings.get(fieldname)
+	return (
+		f"Biflorica rejected {label} '{sent}', so none of the offers could be created. "
+		f"Set Biflorica Setting > {label} to a value registered on your Biflorica "
+		f"account — the API cannot list the valid ones."
+	)
 
 
 def _to_float(value):
@@ -578,9 +839,11 @@ def get_offers():
 					"variety": offer.get("variety") or "",
 					"color": offer.get("color") or "",
 					"size": str(offer.get("size") or ""),
+					"sizes_stems": str(offer.get("sizesStems") or ""),
 					"quantity": _to_float(offer.get("quantity")),
 					"packing": str(offer.get("packing") or ""),
 					"price_per_stem": _to_float(offer.get("pricePerStem")),
+					"price_per_stem_list": str(offer.get("pricePerStem") or ""),
 					"price": _to_float(offer.get("price")),
 					"box_type": offer.get("boxType") or "",
 					"platform": offer.get("platform") or "",
@@ -706,11 +969,18 @@ def _stem_length_rounded_map():
 	Stem Length table per deal. First name wins for a given rounded bucket.
 	"""
 	rounded = {}
-	for name in frappe.get_all("Stem Length", pluck="name"):
-		digits = "".join(ch for ch in str(name) if ch.isdigit())
+	# Read the LENGTH FIELD, never the record name. The master autonames
+	# differently per farm and on some sites falls back to a hash — "qk3ai9rtod"
+	# yields digits "39", which bucketed the 80CM record under 40cm and left
+	# 50/60/70/80 unmapped entirely.
+	has_length = frappe.get_meta("Stem Length").has_field("length")
+	fields = ["name"] + (["length"] if has_length else [])
+	for row in frappe.get_all("Stem Length", fields=fields):
+		source = (row.get("length") if has_length else None) or row.get("name")
+		digits = "".join(ch for ch in str(source) if ch.isdigit())
 		if not digits:
 			continue
-		rounded.setdefault(int(round(int(digits) / 10.0) * 10), name)
+		rounded.setdefault(int(round(int(digits) / 10.0) * 10), row.get("name"))
 	return rounded
 
 
@@ -750,6 +1020,106 @@ def _fetch_live_offers(settings):
 	body = res.get("data") or {}
 	offers = body.get("data") if isinstance(body, dict) else body
 	return [o for o in (offers or []) if isinstance(o, dict)]
+
+
+def _sum_sizes_stems(value):
+	"""Total stems in one box from a `sizesStems` list: "39/39/39/39/39" -> 195."""
+	total = 0
+	for part in str(value or "").split("/"):
+		part = part.strip()
+		if part:
+			try:
+				total += int(float(part))
+			except ValueError:
+				return 0
+	return total
+
+
+def _offer_breakdown_map(settings, live_offers=None):
+	"""{offer id -> [(size, rate_per_stem, stems_per_box), ...]} from the offer.
+
+	An offer is one BOX spanning several stem lengths, each with its own rate:
+
+	    size         "40/50/60/70/80"
+	    pricePerStem "0.20/0.25/0.30/0.35/0.40"
+	    sizesStems   "39/39/39/39/39"
+
+	Kept as parallel triples so a deal can become one Sales Order line PER
+	LENGTH. Collapsing it to a blended rate cannot reproduce the deal value:
+	offer 74 is 60.72 for 198 stems, and 60.72/198 rounds to 0.31, which bills
+	61.38 — out by 0.66. Per-length lines total exactly 60.72.
+
+	Only the stored rows carry rates for an offer that has since expired, which is
+	the usual case by the time a deal is fetched.
+	"""
+	breakdown = {}
+
+	def parse(offer_id, size, rates, stems):
+		sizes = [x.strip() for x in str(size or "").split("/") if x.strip()]
+		rate_parts = [x.strip() for x in str(rates or "").split("/") if x.strip()]
+		stem_parts = [x.strip() for x in str(stems or "").split("/") if x.strip()]
+		if not sizes or len(sizes) != len(rate_parts) or len(sizes) != len(stem_parts):
+			return
+		try:
+			rows = [(sizes[i], flt(rate_parts[i]), int(float(stem_parts[i]))) for i in range(len(sizes))]
+		except ValueError:
+			return
+		if all(stems > 0 for _s, _r, stems in rows):
+			breakdown.setdefault(str(offer_id), rows)
+
+	try:
+		doc = frappe.get_cached_doc("Biflorica Setting", "Biflorica Setting")
+		for r in doc.live_offers:
+			if r.offer_id:
+				parse(
+					r.offer_id,
+					r.size,
+					getattr(r, "price_per_stem_list", None),
+					getattr(r, "sizes_stems", None),
+				)
+	except Exception:
+		pass
+
+	if live_offers is None:
+		live_offers = _fetch_live_offers(settings)
+	for o in live_offers:
+		parse(o.get("id"), o.get("size"), o.get("pricePerStem"), o.get("sizesStems"))
+
+	return breakdown
+
+
+def _offer_stems_map(settings, live_offers=None):
+	"""{offer id -> stems per box}, from the offer's own `sizesStems`.
+
+	A deal states its quantity in BOXES; the stems only exist on the offer it was
+	struck against. `deal.packing` is NOT that number — Biflorica normalises an
+	offer on receipt (we post 40 stems of each of 5 sizes, it stores 39/39/39/39/39
+	= 195 against a nominal `packing` of 200), and the deal then reports
+	`packing: 40`. Taking boxes * deal.packing gave 80 stems where Biflorica's own
+	Deals screen says 390.
+
+	Same two sources as `_offer_size_map`: rows captured at post time survive the
+	offer expiring off /offers, which routinely happens before a deal is fetched.
+	"""
+	stems_by_offer = {}
+
+	try:
+		doc = frappe.get_cached_doc("Biflorica Setting", "Biflorica Setting")
+		for r in doc.live_offers:
+			stems = _sum_sizes_stems(getattr(r, "sizes_stems", None))
+			if r.offer_id and stems:
+				stems_by_offer[str(r.offer_id)] = stems
+	except Exception:
+		pass
+
+	if live_offers is None:
+		live_offers = _fetch_live_offers(settings)
+	for o in live_offers:
+		stems = _sum_sizes_stems(o.get("sizesStems"))
+		if o.get("id") and stems:
+			stems_by_offer.setdefault(str(o.get("id")), stems)
+
+	return stems_by_offer
 
 
 def _offer_size_map(settings, live_offers=None):
@@ -818,35 +1188,72 @@ def _variety_size_map(settings, live_offers=None):
 	return {v: next(iter(s)) for v, s in sizes.items() if len(s) == 1}
 
 
-def _resolve_delivery_point(deal):
-	"""Delivery Point for a deal = its cargo. Find by name, else create it."""
-	cargo = (deal.get("cargo") or "").strip()
-	if not cargo:
+def _find_or_create_named(doctype, value, name_fields):
+	"""The `doctype` record called `value`, created if it is not there yet.
+
+	`name_fields` are the candidate naming/title fields to match and populate,
+	in order — these masters are autonamed off their own Data field, and the
+	field is named differently on each (delivery_point, shipping_agent, ...).
+	"""
+	if not value or not frappe.db.exists("DocType", doctype):
 		return None
-	existing = frappe.db.get_value("Delivery Point", cargo, "name") or frappe.db.get_value(
-		"Delivery Point", {"delivery_point": cargo}, "name"
-	)
+
+	existing = frappe.db.get_value(doctype, value, "name")
 	if existing:
 		return existing
-	dp = frappe.new_doc("Delivery Point")
-	# Delivery Point's first Data field is typically `delivery_point`; set both
-	# the autoname source and any title field defensively.
-	if dp.meta.has_field("delivery_point"):
-		dp.delivery_point = cargo
-	dp.flags.ignore_permissions = True
-	dp.insert(ignore_permissions=True)
-	return dp.name
+	meta = frappe.get_meta(doctype)
+	for fieldname in name_fields:
+		if meta.has_field(fieldname):
+			existing = frappe.db.get_value(doctype, {fieldname: value}, "name")
+			if existing:
+				return existing
+
+	doc = frappe.new_doc(doctype)
+	for fieldname in name_fields:
+		if meta.has_field(fieldname):
+			doc.set(fieldname, value)
+	doc.flags.ignore_permissions = True
+	doc.insert(ignore_permissions=True)
+	return doc.name
+
+
+def _resolve_delivery_point(deal):
+	"""Delivery Point for a deal = its cargo. Find by name, else create it."""
+	return _find_or_create_named(
+		"Delivery Point", (deal.get("cargo") or "").strip(), ("delivery_point", "title")
+	)
+
+
+def _resolve_shipping_agent(deal):
+	"""Shipping Agent for a deal = its cargo, e.g. "EBF Cargo Kenya".
+
+	Biflorica's `cargo` is a freight COMPANY, which is what Shipping Agent holds
+	(the live Kaitet master is 97 rows of MORGAN CARGO KENYA LTD, EXPOLANKA
+	FREIGHT LTD, AIRFLO LTD, ...). Delivery Point is the handover shed and gets
+	the same value only because it is the one shipping detail a deal carries.
+	"""
+	return _find_or_create_named(
+		"Shipping Agent", (deal.get("cargo") or "").strip(), ("shipping_agent", "title")
+	)
+
+
+def _customer_address(customer):
+	"""The customer's primary Address, else any Address linked to them."""
+	if not customer:
+		return None
+	addr = frappe.db.get_value("Customer", customer, "customer_primary_address")
+	if addr:
+		return addr
+	return frappe.db.get_value(
+		"Dynamic Link",
+		{"link_doctype": "Customer", "link_name": customer, "parenttype": "Address"},
+		"parent",
+	)
 
 
 def _customer_address_country(customer):
 	"""Country from the customer's primary/linked Address, if any."""
-	addr = frappe.db.get_value("Customer", customer, "customer_primary_address")
-	if not addr:
-		addr = frappe.db.get_value(
-			"Dynamic Link",
-			{"link_doctype": "Customer", "link_name": customer, "parenttype": "Address"},
-			"parent",
-		)
+	addr = _customer_address(customer)
 	return frappe.db.get_value("Address", addr, "country") if addr else None
 
 
@@ -860,12 +1267,38 @@ def _resolve_deal_item(deal):
 	)
 
 
-def _create_sales_order_from_deal(settings, deal, submit=True, kind="deal", stem_length_map=None):
-	"""Create a Sales Order for one Biflorica deal/predeal. Idempotent on id.
+def _deals_company(settings):
+	"""Company for deal Sales Orders: the configured one, else the warehouse's.
 
-	`submit=True` submits the SO (deals); `submit=False` leaves it as a draft
-	(predeals — submitting the draft later confirms the predeal on Biflorica via
-	the on_submit hook). `kind` ("deal"/"predeal") namespaces the po_no key.
+	A warehouse always belongs to exactly one company, so deriving it from the
+	deals source warehouse (or the offers warehouse) is unambiguous and saves
+	asking for a value the site already knows.
+	"""
+	company = getattr(settings, "deals_company", None)
+	if company:
+		return company
+	for fieldname in ("deals_source_warehouse", "warehouse"):
+		warehouse = getattr(settings, fieldname, None)
+		if warehouse:
+			derived = frappe.db.get_value("Warehouse", warehouse, "company")
+			if derived:
+				return derived
+	return None
+
+
+def _create_sales_order_from_deal(
+	settings, deal, kind="deal", stem_length_map=None, stems_map=None, breakdown_map=None
+):
+	"""Create a DRAFT Sales Order for one Biflorica deal/predeal. Idempotent on id.
+
+	Both kinds land as drafts. Biflorica carries no consignee — the buyer picks
+	the destination per order, and on the live data the same buyer alternates
+	between consignees with no derivable pattern — so somebody has to set
+	`custom_consignee` before the order is committed. Submitting is that review
+	step, and for a predeal it doubles as the Biflorica confirmation (see
+	confirm_biflorica_predeal_on_submit).
+
+	`kind` ("deal"/"predeal") namespaces the po_no key.
 
 	Returns (sales_order_name, status, error_message) where status is one of
 	"created" / "exists", and error_message is set (with name/status None) on
@@ -878,27 +1311,39 @@ def _create_sales_order_from_deal(settings, deal, submit=True, kind="deal", stem
 	# Idempotency key stored in po_no. Namespace it so a bare deal id can't
 	# collide with unrelated Sales Orders that legitimately use the same po_no,
 	# and so deals and predeals never collide with each other.
-	prefix = "BIFLORICA-PREDEAL" if kind == "predeal" else "BIFLORICA"
-	deal_ref = f"{prefix}-{deal_id}"
+	deal_ref = deal_po_ref(deal_id, kind)
+	existing_refs = deal_po_refs(deal_id)
 
 	# Create a draft Quotation instead of a Sales Order when the webshop is set to
 	# "Create Orders as Quotation"; staff review it and convert it to a Sales Order.
-	target_dt = "Quotation" if create_orders_as_quotation() else "Sales Order"
+	target_dt = "Quotation" if create_orders_as_quotation("Biflorica Setting") else "Sales Order"
 	target_item_dt = "Quotation Item" if target_dt == "Quotation" else "Sales Order Item"
 
 	# Only a still-valid (draft/submitted) doc blocks recreation — if the prior one
 	# was cancelled (docstatus 2), create a fresh one for the deal.
-	_existing_dt, existing = _biflorica_deal_exists(deal_ref)
-	if existing:
-		return existing, "exists", None
+	for ref in dict.fromkeys(existing_refs):
+		_existing_dt, existing = _biflorica_deal_exists(ref)
+		if existing:
+			return existing, "exists", None
 
-	# All Biflorica deals register under the single Customer set on Biflorica Setting.
-	customer = getattr(settings, "deals_customer", None)
+	# All Biflorica deals register under the single Customer set on Biflorica
+	# Setting. `deals_customer` overrides, but the general `customer` field is the
+	# obvious place to set it and used to be read by nothing at all — so fall back
+	# to it rather than failing next to a field the operator has already filled in.
+	customer = getattr(settings, "deals_customer", None) or getattr(settings, "customer", None)
 	if not customer:
-		return None, None, "no Deals Customer configured on Biflorica Setting"
+		return None, None, "no Customer configured on Biflorica Setting (Customer or Deals Customer)"
 
-	if not getattr(settings, "deals_company", None):
-		return None, None, "no Deals Company configured on Biflorica Setting"
+	company = _deals_company(settings)
+	if not company:
+		return (
+			None,
+			None,
+			(
+				"no Deals Company configured on Biflorica Setting, and none could be "
+				"derived from the configured warehouse"
+			),
+		)
 
 	so_meta = frappe.get_meta(target_dt)
 	if (
@@ -913,19 +1358,39 @@ def _create_sales_order_from_deal(settings, deal, submit=True, kind="deal", stem
 		and not getattr(settings, "deals_farm", None)
 	):
 		return None, None, "no Deals Farm configured on Biflorica Setting"
+	# Same guard as above: the consignee is configured, never derived, so a
+	# mandatory custom_consignee with nothing set would otherwise surface as a raw
+	# "Consignee is required" from the insert rather than as missing configuration.
+	if (
+		so_meta.has_field("custom_consignee")
+		and so_meta.get_field("custom_consignee").reqd
+		and not getattr(settings, "deals_consignee", None)
+	):
+		return None, None, "no Deals Consignee configured on Biflorica Setting"
 
 	item_code = _resolve_deal_item(deal)
 	if not item_code:
 		return None, None, f"no Item matching variety '{deal.get('variety')}'"
 
-	# Deal quantity is in BOXES; packing is stems/box. SO line qty = total stems.
+	# Deal quantity is in BOXES. Stems per box come from the OFFER's sizesStems,
+	# not from `deal.packing` — see _offer_stems_map for why those differ.
 	boxes = flt(deal.get("quantity"))
-	packing = flt(deal.get("packing"))
-	total_stems = boxes * packing
-	if total_stems <= 0:
-		return None, None, f"non-positive quantity (boxes={boxes}, packing={packing})"
+	offer_id = str(deal.get("offer") or "")
+	# Per-length breakdown of the box, when the offer is on record. Each length
+	# becomes its own Sales Order line at its own rate, which is the only way the
+	# lines add back up to the deal value exactly.
+	breakdown = (breakdown_map or {}).get(offer_id) or []
 
-	# Deal `price` is the total deal value; derive a per-stem rate.
+	stems_per_box = flt((stems_map or {}).get(offer_id))
+	if stems_per_box <= 0:
+		# No offer on record (expired before this sync, or posted elsewhere).
+		stems_per_box = flt(deal.get("packing"))
+	total_stems = boxes * stems_per_box
+	if total_stems <= 0:
+		return None, None, f"non-positive quantity (boxes={boxes}, stems/box={stems_per_box})"
+
+	# Deal `price` is the total deal value. Without a breakdown all we can do is
+	# blend it across the stems, which rounds; with one it is never used.
 	total_price = flt(deal.get("price"))
 	rate = (total_price / total_stems) if total_stems else 0
 
@@ -938,9 +1403,7 @@ def _create_sales_order_from_deal(settings, deal, submit=True, kind="deal", stem
 		so.party_name = customer
 	else:
 		so.customer = customer
-	company = getattr(settings, "deals_company", None)
-	if company:
-		so.company = company
+	so.company = company
 	# Biflorica deals are priced in USD (the deal `price` is USD).
 	so.currency = getattr(settings, "deals_currency", None) or "USD"
 	so.transaction_date = frappe.utils.nowdate()
@@ -988,6 +1451,28 @@ def _create_sales_order_from_deal(settings, deal, submit=True, kind="deal", stem
 		so.custom_consignee_country = consignee_country
 	if so_meta.has_field("custom_consignee") and consignee:
 		so.custom_consignee = consignee
+	# `cargo` is the freight company -> Shipping Agent.
+	shipping_agent = _resolve_shipping_agent(deal)
+	if so_meta.has_field("custom_shipping_agent") and shipping_agent:
+		so.custom_shipping_agent = shipping_agent
+	# upande_packhouse ships these three as mandatory with sync_on_migrate=1, so
+	# clearing the flags on the site does not survive a migrate — the values have
+	# to come from the deal. `cargo` is the freight agent (it drives Drop Off
+	# Point, Truck Details and Shipping Agent alike) and the Biflorica deal id is
+	# the only stable reference we have for the S number.
+	cargo = (deal.get("cargo") or "").strip()
+	if so_meta.has_field("custom_drop_off_point") and cargo:
+		so.custom_drop_off_point = cargo
+	if so_meta.has_field("custom_truck_details") and cargo:
+		so.custom_truck_details = cargo
+	if so_meta.has_field("custom_s_number") and deal_id:
+		so.custom_s_number = deal_ref
+	# Ship to the customer's own address. A Biflorica deal names no address, and
+	# on sites where this is mandatory an unset value blocks the insert outright.
+	if so_meta.has_field("shipping_address_name") and not so.get("shipping_address_name"):
+		address = _customer_address(customer)
+		if address:
+			so.shipping_address_name = address
 	# Store the namespaced deal ref in po_no — doubles as the idempotency key above.
 	if so_meta.has_field("po_no"):
 		so.po_no = deal_ref
@@ -1008,6 +1493,55 @@ def _create_sales_order_from_deal(settings, deal, submit=True, kind="deal", stem
 			)
 			or 1
 		)
+	# One entry per Sales Order line: (stems, per-stem rate, stem length label).
+	# With a breakdown that is one line per length; without one it is a single
+	# blended line, which is all the deal payload alone supports.
+	if breakdown:
+		line_specs = [(boxes * stems, line_rate, size) for size, line_rate, stems in breakdown if stems > 0]
+	else:
+		line_specs = [(total_stems, rate, None)]
+
+	for line_stems, line_rate, line_size in line_specs:
+		_append_deal_line(
+			so,
+			settings=settings,
+			deal=deal,
+			target_item_dt=target_item_dt,
+			item_code=item_code,
+			stems=line_stems,
+			rate=line_rate,
+			size=line_size,
+			sales_uom=sales_uom,
+			conversion_factor=conversion_factor,
+			delivery_date=delivery_date,
+			box_label=box_label,
+			stem_length_map=stem_length_map,
+		)
+
+	so.flags.ignore_permissions = True
+	so.insert(ignore_permissions=True)
+	frappe.log_error(json.dumps(so.as_dict(), indent=2, default=str), f"Biflorica {target_dt} {so.name}")
+	return so.name, "created", None
+
+
+def _append_deal_line(
+	so,
+	*,
+	settings,
+	deal,
+	target_item_dt,
+	item_code,
+	stems,
+	rate,
+	size,
+	sales_uom,
+	conversion_factor,
+	delivery_date,
+	box_label,
+	stem_length_map,
+):
+	"""Append one Sales Order line for `stems` of `item_code` at `rate` per stem."""
+	total_stems = stems
 	line_qty = (total_stems / conversion_factor) if conversion_factor else total_stems
 	line = {
 		"item_code": item_code,
@@ -1041,7 +1575,7 @@ def _create_sales_order_from_deal(settings, deal, submit=True, kind="deal", stem
 	# Stem length (Link to Stem Length) = the size of the deal's offer (captured
 	# at post time / read live). Resolved to a Stem Length record; left blank if
 	# the offer size is unavailable — no guessed fallback.
-	deal_len = deal.get("stem_length")
+	deal_len = size or deal.get("stem_length")
 	stem_length = _resolve_stem_length(deal_len, stem_length_map)
 	if soi_meta.has_field("custom_length") and stem_length:
 		line["custom_length"] = stem_length
@@ -1049,22 +1583,12 @@ def _create_sales_order_from_deal(settings, deal, submit=True, kind="deal", stem
 	pack = str(int(flt(deal.get("packing")))) if deal.get("packing") else None
 	if soi_meta.has_field("custom_packrate") and pack and frappe.db.exists("Packrate", pack):
 		line["custom_packrate"] = pack
-	# Number of boxes = deal quantity (boxes).
+	# Number of boxes = deal quantity. Stamped per line, since every line of a
+	# multi-length deal belongs to the same boxes.
 	if soi_meta.has_field("custom_number_of_boxes"):
-		line["custom_number_of_boxes"] = int(boxes)
+		line["custom_number_of_boxes"] = int(flt(deal.get("quantity")))
 
 	so.append("items", line)
-
-	so.flags.ignore_permissions = True
-	so.insert(ignore_permissions=True)
-	# In Quotation mode the doc is always left as a draft for staff to review and
-	# convert to a Sales Order — the `submit` flag (deal vs predeal) only drives
-	# Sales Order submission and its on_submit hooks.
-	if submit and target_dt == "Sales Order":
-		so.submit()
-	# Always log the created order JSON for traceability against the deal.
-	frappe.log_error(json.dumps(so.as_dict(), indent=2, default=str), f"Biflorica {target_dt} {so.name}")
-	return so.name, "created", None
 
 
 @frappe.whitelist()
@@ -1087,6 +1611,8 @@ def get_deals(window_from: str | datetime | None = None):
 		live_offers = _fetch_live_offers(settings)
 		size_by_offer = _offer_size_map(settings, live_offers)
 		size_by_variety = _variety_size_map(settings, live_offers)
+		stems_by_offer = _offer_stems_map(settings, live_offers)
+		breakdown_by_offer = _offer_breakdown_map(settings, live_offers)
 		stem_length_map = _stem_length_rounded_map()
 
 		created, approved, existing_deals, failed = [], [], [], []
@@ -1106,7 +1632,11 @@ def get_deals(window_from: str | datetime | None = None):
 
 			try:
 				so_name, status, err = _create_sales_order_from_deal(
-					settings, deal, stem_length_map=stem_length_map
+					settings,
+					deal,
+					stem_length_map=stem_length_map,
+					stems_map=stems_by_offer,
+					breakdown_map=breakdown_by_offer,
 				)
 			except Exception as e:
 				frappe.db.rollback()
@@ -1174,7 +1704,8 @@ PREDEAL_PO_PREFIX = "BIFLORICA-PREDEAL-"
 def get_predeals(window_from: str | datetime | None = None):
 	"""Fetch Biflorica preorders and create them as DRAFT Sales Orders.
 
-	Unlike deals (auto-submitted + approved), predeals land as drafts for review.
+	Both deals and predeals land as drafts — the consignee has to be set by hand
+	before the order is committed.
 	Submitting the draft Sales Order later confirms the preorder on Biflorica
 	(see process_predeals).
 	"""
@@ -1192,6 +1723,8 @@ def get_predeals(window_from: str | datetime | None = None):
 		live_offers = _fetch_live_offers(settings)
 		size_by_offer = _offer_size_map(settings, live_offers)
 		size_by_variety = _variety_size_map(settings, live_offers)
+		stems_by_offer = _offer_stems_map(settings, live_offers)
+		breakdown_by_offer = _offer_breakdown_map(settings, live_offers)
 		stem_length_map = _stem_length_rounded_map()
 
 		created, existing_deals, failed = [], [], []
@@ -1211,7 +1744,12 @@ def get_predeals(window_from: str | datetime | None = None):
 
 			try:
 				so_name, status, err = _create_sales_order_from_deal(
-					settings, deal, submit=False, kind="predeal", stem_length_map=stem_length_map
+					settings,
+					deal,
+					kind="predeal",
+					stem_length_map=stem_length_map,
+					stems_map=stems_by_offer,
+					breakdown_map=breakdown_by_offer,
 				)
 			except Exception as e:
 				frappe.db.rollback()

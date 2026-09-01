@@ -68,6 +68,7 @@ from ecommerce_integration.ecommerce_integration.utils.stem_length import (
 	_normalize_stem_length,
 	_stem_length_rates_from_item_prices,
 	_stem_length_rates_from_variants,
+	resolve_stem_length_rates,
 )
 
 
@@ -80,8 +81,8 @@ class FloridayItems(Document):
 
 		if not price_list:
 			# Floriday Settings has no price_list field; resolve one (USD Price List
-			# → first enabled USD Selling list, with a Webshop Settings override if
-			# that app happens to be present).
+			# → first enabled USD Selling list, overridden by Floriday Settings >
+			# Price List when that is set).
 			from ecommerce_integration.ecommerce_integration.utils import _resolve_price_list
 
 			price_list = _resolve_price_list()
@@ -90,7 +91,13 @@ class FloridayItems(Document):
 		if has_variants:
 			latest_rate = _stem_length_rates_from_variants(self.item_code, price_list)
 		else:
-			latest_rate = _stem_length_rates_from_item_prices(self.item_code, price_list)
+			# Item Price rows first, then the post-harvest `Stem Length.price`
+			# master fills any length they do not cover.
+			latest_rate = resolve_stem_length_rates(
+				self.item_code, price_list=price_list, item_group=self.item_group
+			)
+			if not latest_rate:
+				latest_rate = _stem_length_rates_from_item_prices(self.item_code, price_list)
 
 		existing = {row.stem_length: row for row in self.table_ppvq if row.stem_length}
 
@@ -215,16 +222,16 @@ def _find_or_create_floriday_item(item):
 def get_item_mapping():
 	from ecommerce_integration.ecommerce_integration.utils import has_doctypes
 
-	if not has_doctypes("Floriday Items", "Stem Length Price"):
+	if not has_doctypes("Floriday Items", "Floriday Item Length"):
 		return {}
 
 	rows = frappe.db.sql(
 		"""
-		select fi.item_code, slp.trade_item_id, slp.stem_length
+		select fi.item_code, fil.trade_item_id, fil.stem_length
 		from `tabFloriday Items` fi
-		join `tabStem Length Price` slp on slp.parent = fi.name
-		where slp.parenttype = 'Floriday Items'
-		and ifnull(slp.trade_item_id, '') != ''
+		join `tabFloriday Item Length` fil on fil.parent = fi.name
+		where fil.parenttype = 'Floriday Items'
+		and ifnull(fil.trade_item_id, '') != ''
 		""",
 		as_dict=True,
 	)
@@ -240,15 +247,15 @@ def get_item_code_from_trade_item_id(trade_item_id):
 
 	if not trade_item_id:
 		return None
-	if not has_doctypes("Floriday Items", "Stem Length Price"):
+	if not has_doctypes("Floriday Items", "Floriday Item Length"):
 		return None
 	row = frappe.db.sql(
 		"""
 		select fi.item_code
 		from `tabFloriday Items` fi
-		join `tabStem Length Price` slp on slp.parent = fi.name
-		where slp.parenttype = 'Floriday Items'
-		and slp.trade_item_id = %s
+		join `tabFloriday Item Length` fil on fil.parent = fi.name
+		where fil.parenttype = 'Floriday Items'
+		and fil.trade_item_id = %s
 		limit 1
 		""",
 		(trade_item_id,),

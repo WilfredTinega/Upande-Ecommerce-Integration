@@ -1,0 +1,23 @@
+{
+ "action": "Update Settings",
+ "action_label": "Connect Floriday and schedule its jobs",
+ "creation": "2026-08-28 15:24:43.135894",
+ "description": "Client ID, secret, scope, API key, token URL and base URL, plus the organisation and warehouse ids.\n\nEach job \u2014 sales orders, batches, supply lines, order fulfilment, stock, token refresh \u2014 has its own toggle and frequency and becomes its own Scheduled Job Type row. Those rows are re-created by the app's `after_migrate`, so a migrate never leaves the connector unscheduled.",
+ "docstatus": 0,
+ "doctype": "Onboarding Step",
+ "field": "client_id",
+ "idx": 0,
+ "is_complete": 0,
+ "is_single": 1,
+ "is_skipped": 0,
+ "modified": "2026-08-28 16:21:21.878853",
+ "modified_by": "Administrator",
+ "name": "Connect Floriday",
+ "owner": "Administrator",
+ "reference_document": "Floriday Settings",
+ "show_form_tour": 0,
+ "show_full_form": 0,
+ "title": "Connect Floriday",
+ "validate_action": 1,
+ "value_to_validate": "%"
+}

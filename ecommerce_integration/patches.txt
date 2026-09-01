@@ -4,3 +4,5 @@
 
 [post_model_sync]
 # Patches added in this section will be executed after doctypes are migrated
+ecommerce_integration.patches.encrypt_biflorica_password
+ecommerce_integration.patches.migrate_webshop_tables_to_app_doctypes

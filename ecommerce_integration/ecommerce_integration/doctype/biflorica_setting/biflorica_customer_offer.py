@@ -5,9 +5,56 @@ from datetime import datetime, timedelta
 import frappe
 import requests
 from frappe import _
-from frappe.utils import flt
+from frappe.utils import cint, flt
 
 _logger = frappe.logger("biflorica", allow_site=True)
+
+
+# Biflorica runs ONE HOST PER PLATFORM. The wrong one is not an error: it
+# authenticates, serves GET /offers, and validates a posted payload — then
+# discards the create and answers 200 with an empty body. Only codes confirmed
+# against a live host belong here; an unknown code must stay silent rather than
+# block a platform this map has not seen.
+PLATFORM_HOST_CODES = {
+	"kenya": "ke",
+	"ecuador": "ec",
+}
+
+
+def platform_host_mismatch(settings):
+	"""Message naming a confident platform/base-URL mismatch, else None.
+
+	Flags only the high-confidence case: the platform is one we know the host code
+	for, AND the configured host carries a *different* known code. An unrecognised
+	host prefix (a new region, a proxy, a local mirror) is left alone.
+	"""
+	from urllib.parse import urlparse
+
+	platform = (getattr(settings, "platform", "") or "").strip().lower()
+	base_url = (getattr(settings, "base_url", "") or "").strip()
+	if not platform or not base_url:
+		return None
+
+	expected = PLATFORM_HOST_CODES.get(platform)
+	if not expected:
+		return None
+
+	host = (urlparse(base_url).hostname or "").lower()
+	actual = host.split(".", 1)[0] if host else ""
+	if not actual or actual == expected:
+		return None
+	# Only complain when the host names a platform we recognise as a DIFFERENT one.
+	if actual not in PLATFORM_HOST_CODES.values():
+		return None
+
+	other = next(name for name, code in PLATFORM_HOST_CODES.items() if code == actual)
+	return (
+		f"Biflorica Setting > Base URL points at the '{actual}' host ({other.title()}) "
+		f"but Platform is '{settings.platform}'. Each platform has its own host, and "
+		f"the wrong one still authenticates and reads — it just discards new offers "
+		f"silently. Expected a '{expected}.' host, e.g. "
+		f"{base_url.replace(actual + '.', expected + '.', 1)}"
+	)
 
 
 def _clean_farm_code(farm):
@@ -40,6 +87,12 @@ def post_all_items_to_biflorica(
 		missing_fields = [field for field, value in required_fields.items() if not value]
 		if missing_fields:
 			frappe.throw(f"Missing required fields in Biflorica Setting: {', '.join(missing_fields)}")
+
+		# Refuse to post into the void: the wrong platform host returns 200 and
+		# creates nothing, so failing here is far kinder than a silent no-op.
+		mismatch = platform_host_mismatch(settings)
+		if mismatch:
+			frappe.throw(mismatch, title=_("Wrong Biflorica host"))
 
 		token_valid = validate_access_token(settings)
 		if not token_valid:
@@ -249,6 +302,32 @@ def round_to_nearest_tens(number):
 	return int(round(number / 10) * 10)
 
 
+# Item fields the offer builder copies through when the site has them. Most are
+# custom fields that only some farms ship, so the list is intersected with the
+# live Item meta before it reaches the query.
+_OFFER_ITEM_FIELDS = (
+	"item_code",
+	"item_name",
+	"item_group",
+	"variant_of",
+	"packing",
+	"box_type",
+	"color",
+	"image",
+	"size",
+	"characteristics",
+	"stem_length",
+	"item_length",
+	"length",
+	"flower_type",
+	"flower_variety",
+	"flower_size",
+	"stem_size",
+	"biflorica_type",
+	"biflorica_variety",
+)
+
+
 def _biflorica_item_qty_source(warehouse):
 	bins = frappe.get_all(
 		"Bin",
@@ -258,134 +337,202 @@ def _biflorica_item_qty_source(warehouse):
 	return {b["item_code"]: b["actual_qty"] for b in bins}
 
 
-def get_enabled_offer_items(warehouse=None):
-	from ecommerce_integration.ecommerce_integration.utils import has_doctypes
-
-	# Both tables belong to upande_webshop; with no published webshop prices there
-	# are no offer items to build.
-	if not has_doctypes("Webshop Item Prices", "Stem Length Price"):
-		return []
-
-	rows = frappe.db.sql(
-		"""
-        SELECT wip.item_code, slp.stem_length, slp.stock_qty, slp.rate
-        FROM `tabStem Length Price` slp
-        JOIN `tabWebshop Item Prices` wip ON wip.name = slp.parent
-        WHERE slp.parenttype = 'Webshop Item Prices'
-          AND slp.enabled = 1
-          AND slp.stock_qty > 0
-        ORDER BY wip.item_code, slp.stem_length
-        """,
-		as_dict=True,
-	)
-	if not rows:
-		return []
-
-	item_codes = list({r.item_code for r in rows})
-	item_fields = [
-		"item_code",
-		"item_name",
-		"item_group",
-		"variant_of",
-		"packing",
-		"box_type",
-		"color",
-		"image",
-		"size",
-		"characteristics",
-		"stem_length",
-		"item_length",
-		"length",
-		"flower_type",
-		"flower_variety",
-		"flower_size",
-		"stem_size",
-		"biflorica_type",
-		"biflorica_variety",
-	]
-	existing_fields = [f.fieldname for f in frappe.get_meta("Item").fields]
-	fetch_fields = [field for field in item_fields if field in existing_fields]
-	item_meta = {
+def _item_meta_by_code(item_codes):
+	"""{item_code: {field: value}} for the offer fields this site actually has."""
+	if not item_codes:
+		return {}
+	existing_fields = {f.fieldname for f in frappe.get_meta("Item").fields}
+	fetch_fields = [field for field in _OFFER_ITEM_FIELDS if field in existing_fields]
+	return {
 		i["item_code"]: i
-		for i in frappe.get_all("Item", fields=fetch_fields, filters={"item_code": ["in", item_codes]})
+		for i in frappe.get_all("Item", fields=fetch_fields, filters={"item_code": ["in", list(item_codes)]})
 	}
+
+
+def _enabled_offer_rows():
+	"""The (item, length, qty) rows an operator enabled on the Stock tab.
+
+	Read from `Ecommerce Enabled Stock`, which this app owns. `rate` is always
+	None — availability is the only thing stored; the per-stem price is resolved
+	from `Item Price` / the post-harvest `Stem Length` master by
+	`_offer_items_from_rows`.
+
+	This is the ONLY source of offers. Empty means nothing was enabled, and
+	nothing gets posted.
+	"""
+	rows = frappe.get_all(
+		"Ecommerce Enabled Stock",
+		filters={"enabled": 1, "stock_qty": [">", 0]},
+		fields=["item_code", "stem_length", "stock_qty"],
+		order_by="item_code asc, stem_length asc",
+	)
+	for row in rows:
+		row.rate = None
+	return rows
+
+
+def _offer_items_from_rows(rows, customer=None):
+	"""Turn (item, length, qty, rate) rows into the offer-builder's item dicts.
+
+	A row with no rate of its own is priced through the post-harvest chain
+	(`Customer pricing` -> `Item Price` -> `Stem Length.price`). Rows that stay
+	unpriced are kept, not dropped: `prepare_offers_payload_with_details`
+	already reports zero-price items as skipped with a reason, and silently
+	losing them here would make that diagnosis impossible.
+	"""
+	from ecommerce_integration.ecommerce_integration.utils.stem_length import (
+		resolve_stem_length_rate,
+	)
+
+	item_meta = _item_meta_by_code({r.item_code for r in rows})
 
 	offer_items = []
 	for r in rows:
 		base = dict(item_meta.get(r.item_code) or {"item_code": r.item_code, "item_name": r.item_code})
 		base["actual_qty"] = flt(r.stock_qty)
 		base["stem_length"] = r.stem_length or base.get("stem_length")
-		base["price_per_stem"] = flt(r.rate)
+		rate = flt(r.rate)
+		if rate <= 0:
+			rate = flt(
+				resolve_stem_length_rate(
+					r.item_code,
+					base.get("stem_length"),
+					item_group=base.get("item_group"),
+					customer=customer,
+				)
+			)
+		base["price_per_stem"] = rate
 		offer_items.append(base)
 
 	return offer_items
 
 
+def get_enabled_offer_items(warehouse=None, customer=None):
+	"""Items to offer on Biflorica: ONLY what is enabled, at the enabled qty.
+
+	Deliberately has no fallback to raw shelf or warehouse stock. It used to fall
+	back when nothing was enabled, which meant pressing Post Offers with an empty
+	selection offered the entire shelf — every variety and length on the list —
+	rather than the handful an operator had actually chosen.
+
+	`warehouse` is accepted for call compatibility and no longer used: the
+	enabled set is explicit, so there is no location to infer stock from.
+	"""
+	rows = _enabled_offer_rows()
+	if not rows:
+		return []
+	return _offer_items_from_rows(rows, customer=customer)
+
+
+def _enabled_keys():
+	"""{(item_code, canonical_length)} for everything currently enabled."""
+	from ecommerce_integration.ecommerce_integration.utils.post_harvest import (
+		canonical_stem_length,
+	)
+
+	return {
+		(r.item_code, canonical_stem_length(r.stem_length))
+		for r in frappe.get_all(
+			"Ecommerce Enabled Stock",
+			filters={"enabled": 1},
+			fields=["item_code", "stem_length"],
+		)
+	}
+
+
 def get_warehouse_stock_items(warehouse):
+	"""Rows for the "Stock Available for Offers" table.
+
+	When Biflorica Setting opts into shelf stock, the shelves are the source and
+	each row carries its own stem length; otherwise this is Bin stock keyed by
+	item code alone.
+
+	`Show Only Enabled Stock?` narrows the table to the (item, length) pairs that
+	are actually enabled — the set Post Offers will send. Until now that checkbox
+	was read by nothing at all, so the table always listed the whole shelf.
+	"""
+	from ecommerce_integration.ecommerce_integration.utils.post_harvest import (
+		canonical_stem_length,
+	)
+	from ecommerce_integration.ecommerce_integration.utils.shelf_stock import shelf_stock_enabled
+	from ecommerce_integration.ecommerce_integration.utils.stock_picker import get_shelf_rows
+
+	enabled_only = bool(cint(frappe.db.get_single_value("Biflorica Setting", "publish_enabled_stock_only")))
+	enabled_keys = _enabled_keys() if enabled_only else None
+
+	if shelf_stock_enabled("Biflorica Setting"):
+		shelf_rows = get_shelf_rows()
+		if shelf_rows:
+			item_meta = _item_meta_by_code({r["item_code"] for r in shelf_rows})
+			items_with_stock = []
+			for r in shelf_rows:
+				if (
+					enabled_keys is not None
+					and (
+						r["item_code"],
+						canonical_stem_length(r.get("stem_length")),
+					)
+					not in enabled_keys
+				):
+					continue
+				item = dict(item_meta.get(r["item_code"]) or {"item_code": r["item_code"]})
+				item["item_name"] = item.get("item_name") or r.get("item_name") or r["item_code"]
+				item["stem_length"] = r.get("stem_length") or item.get("stem_length")
+				item["actual_qty"] = flt(r.get("shelf_qty"))
+				items_with_stock.append(item)
+			return items_with_stock
+
 	qty_by_code = _biflorica_item_qty_source(warehouse)
 	if not qty_by_code:
 		return []
 
-	item_codes = list(qty_by_code.keys())
+	if enabled_keys is not None:
+		# Bin rows carry no stem length, so match on the item alone here.
+		enabled_items = {code for code, _length in enabled_keys}
+		qty_by_code = {c: q for c, q in qty_by_code.items() if c in enabled_items}
+		if not qty_by_code:
+			return []
 
-	item_fields = [
-		"item_code",
-		"item_name",
-		"item_group",
-		"variant_of",
-		"packing",
-		"box_type",
-		"color",
-		"image",
-		"size",
-		"characteristics",
-		"stem_length",
-		"item_length",
-		"length",
-		"flower_type",
-		"flower_variety",
-		"flower_size",
-		"stem_size",
-		"biflorica_type",
-		"biflorica_variety",
-	]
-
-	existing_fields = [f.fieldname for f in frappe.get_meta("Item").fields]
-	fetch_fields = [field for field in item_fields if field in existing_fields]
-
-	items = frappe.get_all("Item", fields=fetch_fields, filters={"item_code": ["in", item_codes]})
-
-	items_with_stock = []
+	items = list(_item_meta_by_code(qty_by_code.keys()).values())
 	for item in items:
 		item["actual_qty"] = qty_by_code.get(item["item_code"], 0)
-		items_with_stock.append(item)
-
-	return items_with_stock
+	return items
 
 
-def get_item_price(item_code, price_list="Standard Selling"):
+def get_item_price(item_code, price_list=None, stem_length=None, item_group=None, customer=None):
+	"""Per-stem rate for an item, via the shared post-harvest price chain.
+
+	Falls back to any Item Price the item has on any list, so a site that prices
+	only in its default list still gets a rate rather than a zero (which the
+	offer builder treats as "skip this item").
+	"""
+	from ecommerce_integration.ecommerce_integration.utils.stem_length import (
+		resolve_stem_length_rate,
+	)
+
 	try:
-		price = frappe.get_value(
-			"Item Price", {"item_code": item_code, "price_list": price_list}, "price_list_rate"
+		rate = resolve_stem_length_rate(
+			item_code,
+			stem_length,
+			price_list=price_list,
+			item_group=item_group,
+			customer=customer,
 		)
+		if rate:
+			return float(rate)
 
-		if price is None:
-			all_prices = frappe.get_all(
-				"Item Price", fields=["price_list", "price_list_rate"], filters={"item_code": item_code}
-			)
+		any_price = frappe.get_all(
+			"Item Price",
+			fields=["price_list_rate"],
+			filters={"item_code": item_code},
+			order_by="modified desc",
+			limit=1,
+		)
+		if any_price:
+			return float(any_price[0].price_list_rate or 0)
 
-			if all_prices:
-				frappe.log_error(
-					f"Item {item_code} has prices but not in {price_list}: {all_prices}",
-					"Biflorica Price Debug",
-				)
-				price = all_prices[0].get("price_list_rate")
-			else:
-				frappe.log_error(
-					f"No prices found for item {item_code} in any price list", "Biflorica Price Debug"
-				)
-
-		return float(price or 0)
+		_logger.info(f"[Biflorica Price] No price found for item {item_code}")
+		return 0
 
 	except Exception as e:
 		frappe.log_error(f"Error getting price for {item_code}: {e!s}", "Biflorica Price Error")
@@ -420,8 +567,35 @@ def get_biflorica_flower_variety(item, flower_type):
 	return default_varieties.get(flower_type, "Standard")
 
 
+def _slash(values):
+	"""Biflorica's parallel-list encoding, e.g. "40/50/60"."""
+	return "/".join(str(v) for v in values)
+
+
 def prepare_offers_payload_with_details(items_data, settings, box_type=None, packrate=None, minimum=None):
-	offer_duration_days = getattr(settings, "offer_duration_days", 1)
+	"""Build offers in the exact shape `GET /offers` returns.
+
+	One offer is ONE BOX spanning every enabled stem length of a variety — not
+	one offer per length, which is what this used to send:
+
+	    size          "40/50/60"        the lengths, ascending
+	    pricePerStem  "0.20/0.25/0.30"  one rate per length, parallel to `size`
+	    sizesStems    "66/66/66"        stems of each length inside ONE box
+	    packing       200               nominal stems per box (int)
+	    quantity      "3.0"             number of BOXES, not stems
+	    price         "49.50"           box price = sum(rate_i * stems_i)
+
+	Checked against live offer 74, whose 9 sizes x 22 stems and 60.72 box price
+	reproduce exactly under this arithmetic. Sending `quantity` as stems (the old
+	behaviour) offered 200 boxes of 200 stems where 200 stems were meant.
+
+	`minimum` is accepted so existing callers keep working but is NOT sent — the
+	live offer structure carries no such field.
+	"""
+	# `or 1`, not just a getattr default: Biflorica Setting has no such field, so
+	# a mapping-like settings object answers None rather than raising, and
+	# timedelta(days=None) would blow up the whole offer run.
+	offer_duration_days = getattr(settings, "offer_duration_days", None) or 1
 
 	box_type = (box_type or "HB").strip() if isinstance(box_type, str) else (box_type or "HB")
 	try:
@@ -430,121 +604,149 @@ def prepare_offers_payload_with_details(items_data, settings, box_type=None, pac
 		packrate = 0
 	if packrate <= 0:
 		packrate = 300
-	try:
-		minimum = int(flt(minimum))
-	except (TypeError, ValueError):
-		minimum = 0
-	if minimum <= 0:
-		minimum = 1
 
-	offer_data = []
-	individual_offers_details = []
+	details = []
 
+	def skip(item, reason, **debug):
+		details.append(
+			{
+				"item_code": item.get("item_code"),
+				"item_name": item.get("item_name"),
+				"status": "skipped",
+				"reason": reason,
+				"payload": None,
+				"debug_info": debug or None,
+			}
+		)
+
+	# Collect the enabled rows into one box spec per (type, variety).
+	groups = {}
 	for item in items_data:
-		quantity = item.get("actual_qty", 0)
+		item_code = item.get("item_code")
+		quantity = flt(item.get("actual_qty"))
+
 		price_per_stem = item.get("price_per_stem")
 		if price_per_stem is None:
-			price_per_stem = get_item_price(item["item_code"])
+			price_per_stem = get_item_price(
+				item_code,
+				stem_length=item.get("stem_length"),
+				item_group=item.get("item_group"),
+			)
 		price_per_stem = flt(price_per_stem)
-
-		if price_per_stem <= 0:
-			frappe.log_error(
-				f"Skipping item {item['item_code']} with zero price. Check Item Price records.",
-				"Biflorica Sync",
-			)
-			individual_offers_details.append(
-				{
-					"item_code": item["item_code"],
-					"item_name": item.get("item_name"),
-					"status": "skipped",
-					"reason": "Zero price - no valid price found in Item Price",
-					"payload": None,
-					"debug_info": {
-						"quantity": quantity,
-						"price_per_stem": price_per_stem,
-						"suggestion": "Check if Item Price exists for this item in Standard Selling price list",
-					},
-				}
-			)
-			continue
-
-		if quantity <= 0:
-			frappe.log_error(f"Skipping item {item['item_code']} with zero quantity", "Biflorica Sync")
-			individual_offers_details.append(
-				{
-					"item_code": item["item_code"],
-					"item_name": item.get("item_name"),
-					"status": "skipped",
-					"reason": "Zero quantity",
-					"payload": None,
-				}
-			)
-			continue
-
-		sizes_stems = packrate
 
 		stem_length = validate_and_clean_stem_length(item.get("stem_length"))
 		if not stem_length:
-			stem_length = get_stem_length_from_stock_entry(item["item_code"], settings.warehouse)
+			stem_length = get_stem_length_from_stock_entry(item_code, settings.warehouse)
+
+		if price_per_stem <= 0:
+			skip(
+				item,
+				"Zero price - no rate in Item Price or the post-harvest Stem Length master",
+				price_per_stem=price_per_stem,
+				quantity=quantity,
+			)
+			continue
+		if quantity <= 0:
+			skip(item, "Zero quantity", quantity=quantity)
+			continue
+		if not stem_length:
+			skip(item, "No stem length could be resolved for this row")
+			continue
 
 		flower_type = get_biflorica_flower_type(item)
 		flower_variety = get_biflorica_flower_variety(item, flower_type)
-
-		characteristics = get_flower_characteristics(item)
-
-		picture_url = get_picture_url(item)
-
-		_logger.info(
-			f"[Biflorica Item Mapping] Processing item: {item['item_code']} - Biflorica Type: {flower_type} - Biflorica Variety: {flower_variety} - Rounded Stem Length: {stem_length} - Price: {price_per_stem} - Packing: {sizes_stems} - BoxType: {box_type} - Minimum: {minimum}"
+		group = groups.setdefault(
+			(flower_type, flower_variety),
+			{"item": item, "type": flower_type, "variety": flower_variety, "lengths": {}},
 		)
+		# Two items can map to one Biflorica variety. Pool their stems and keep the
+		# lower rate, so the box stays sellable at the price we quote.
+		row = group["lengths"].get(stem_length)
+		if row:
+			row["qty"] += quantity
+			row["rate"] = min(row["rate"], price_per_stem)
+		else:
+			group["lengths"][stem_length] = {"qty": quantity, "rate": price_per_stem}
+
+	now = datetime.now()
+	date_start = now.strftime("%Y-%m-%d %H:%M:%S")
+	date_end = (now + timedelta(days=offer_duration_days)).strftime("%Y-%m-%d %H:%M:%S")
+
+	offer_data = []
+	for group in groups.values():
+		item = group["item"]
+		lengths = sorted(group["lengths"], key=lambda size: flt(size))
+
+		# The box is split evenly across its lengths, the way live offer 74 is
+		# (9 sizes x 22 stems against a nominal packing of 200).
+		stems_each = packrate // len(lengths)
+		if stems_each <= 0:
+			skip(
+				item,
+				f"Packing of {packrate} cannot be split across {len(lengths)} stem lengths",
+				stem_lengths=lengths,
+			)
+			continue
+
+		# A box needs `stems_each` of EVERY length, so the scarcest length caps how
+		# many whole boxes can be offered.
+		boxes = min(int(flt(group["lengths"][size]["qty"]) // stems_each) for size in lengths)
+		if boxes <= 0:
+			skip(
+				item,
+				f"Not enough stock for one full box ({stems_each} stems of each of {len(lengths)} lengths)",
+				stem_lengths=lengths,
+				available={size: group["lengths"][size]["qty"] for size in lengths},
+			)
+			continue
+
+		rates = [flt(group["lengths"][size]["rate"]) for size in lengths]
+		box_price = round(sum(rate * stems_each for rate in rates), 2)
 
 		offer = {
-			"dateStart": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-			"dateEnd": (datetime.now() + timedelta(days=offer_duration_days)).strftime("%Y-%m-%d %H:%M:%S"),
+			"dateStart": date_start,
+			"dateEnd": date_end,
 			"platform": settings.platform,
 			"farm": _clean_farm_code(settings.farm),
-			"type": flower_type,
-			"variety": flower_variety,
-			"color": item.get("color", "") or "",
-			"pictureURL": picture_url,
-			"size": stem_length,
-			"pricePerStem": str(round(float(price_per_stem), 2)),
-			"sizesStems": str(sizes_stems),
-			"price": str(round(float(price_per_stem * sizes_stems), 2)),
-			"packing": str(sizes_stems),
-			"quantity": str(float(quantity)),
+			"type": group["type"],
+			"variety": group["variety"],
+			"color": item.get("color") or "",
+			"pictureURL": get_picture_url(item),
+			"size": _slash(lengths),
+			"pricePerStem": _slash(f"{rate:.2f}" for rate in rates),
+			"sizesStems": _slash([stems_each] * len(lengths)),
+			"price": f"{box_price:.2f}",
+			"packing": packrate,
+			"quantity": f"{float(boxes):.1f}",
 			"boxType": box_type,
-			"minimum": str(minimum),
-			"characteristics": characteristics,
+			"characteristics": get_flower_characteristics(item),
 		}
-
-		offer = {k: v for k, v in offer.items() if v is not None}
-
 		offer_data.append(offer)
 
-		individual_offer_detail = {
-			"item_code": item["item_code"],
-			"item_name": item.get("item_name"),
-			"status": "ready_to_post",
-			"reason": "Successfully mapped",
-			"payload": offer,
-			"source_data": {
-				"original_quantity": quantity,
-				"original_price_per_stem": price_per_stem,
-				"stem_length_source": "Stock Entry",
-				"mapped_flower_type": flower_type,
-				"mapped_variety": flower_variety,
-				"mapped_stem_length": stem_length,
-				"mapped_packing": sizes_stems,
-				"mapped_box_type": box_type,
-				"mapped_minimum": minimum,
-			},
-		}
-		individual_offers_details.append(individual_offer_detail)
+		_logger.info(
+			f"[Biflorica Offer] {group['variety']}: sizes {offer['size']} | "
+			f"{stems_each} stems each | {boxes} box(es) of {packrate} | box price {offer['price']}"
+		)
+		details.append(
+			{
+				"item_code": item.get("item_code"),
+				"item_name": item.get("item_name"),
+				"status": "ready_to_post",
+				"reason": "Successfully mapped",
+				"payload": offer,
+				"source_data": {
+					"stem_lengths": lengths,
+					"stems_per_length_in_box": stems_each,
+					"boxes": boxes,
+					"box_type": box_type,
+					"packing": packrate,
+					"rates": rates,
+				},
+			}
+		)
 
 	main_payload = {"data": offer_data, "countAll": str(len(offer_data))}
-
-	return main_payload, individual_offers_details
+	return main_payload, details
 
 
 def get_flower_characteristics(item):
@@ -605,6 +807,39 @@ def post_to_biflorica_api(offers_payload, settings):
 		_logger.info(f"[Biflorica API Response] API RESPONSE BODY: {response.text}")
 
 		if response.status_code in [200, 201]:
+			# A create that worked answers with a JSON array carrying a per-offer
+			# `result` (and the new offer's id). An EMPTY body means the request was
+			# accepted and then nothing happened — Biflorica returns 200 with a
+			# zero-length text/html body when the payload validates but the offer is
+			# not created. Reporting that as success is how "Posted N offer(s)" came
+			# to be shown for offers that never appeared on the marketplace.
+			if not (response.text or "").strip():
+				# Seen when Base URL points at the WRONG PLATFORM HOST. Biflorica runs
+				# one host per platform — ke.term.apitest… is Kenya, ec.term.apitest…
+				# is Ecuador — and the wrong one still authenticates, still serves
+				# GET /offers, and still validates the payload. It just discards the
+				# create and answers 200 with an empty body. That cost a long debug;
+				# name it first.
+				message = (
+					"Biflorica accepted the request but returned an empty body, so nothing "
+					f"was created. Check Biflorica Setting > Base URL ({settings.base_url}) "
+					"points at the host for this platform "
+					f"({settings.platform or 'not set'}) — each platform has its own host "
+					"(e.g. ke.term… for Kenya, ec.term… for Ecuador), and the wrong one "
+					"reads fine but silently discards new offers."
+				)
+				frappe.log_error(
+					f"{message}\nendpoint={endpoint_url}\npayload={json.dumps(offers_payload)[:1500]}",
+					"Biflorica Empty Response",
+				)
+				return {
+					"success": False,
+					"message": message,
+					"offers_count": 0,
+					"api_response": response.text,
+					"status_code": response.status_code,
+				}
+
 			if "not_validate" in response.text or "Not parsed" in response.text:
 				error_msg = f"Biflorica validation failed: {response.text}"
 				frappe.log_error(error_msg, "Biflorica Validation Error")

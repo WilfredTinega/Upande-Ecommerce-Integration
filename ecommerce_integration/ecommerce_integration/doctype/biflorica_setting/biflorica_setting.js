@@ -308,7 +308,11 @@ frappe.ui.form.on("Biflorica Setting", {
 						if (ok.length) {
 							toast(__("Posted: {0}", [ok.join(", ")]), "green");
 						}
-						if (failed.length) {
+						// A bad SETTING rejects every offer identically and res.message
+						// already names it, so the per-variety list would just bury it.
+						// A shared *data* reason (an unknown variety, say) still needs the
+						// list — otherwise you cannot see which items to fix.
+						if (failed.length && !s.settings_hint) {
 							const lines = failed.map(function (f) {
 								return f.variety + " (" + (f.reason || "rejected") + ")";
 							});

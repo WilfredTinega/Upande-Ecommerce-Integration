@@ -251,12 +251,13 @@ def create_single_supply_line(BASE_URL, API_KEY, ACCESS_TOKEN, batch):
 		if not warehouse_id:
 			return {"status": "failed", "message": "No warehouse", "batch_id": batch_id}
 
-		# Per-stem rate from Floriday Items > Stem Length Price (by trade_item_id)
+		# Per-stem rate: the trade item's own Floriday Item Length row when it has
+		# one, otherwise the post-harvest price chain for the item it maps to.
 		offer_price = get_item_price_from_erpnext(trade_item_id)
 		if not offer_price:
 			return {
 				"status": "skipped",
-				"message": f"No Stem Length Price for trade_item_id {trade_item_id}",
+				"message": f"No price found for trade_item_id {trade_item_id}",
 				"batch_id": batch_id,
 			}
 
@@ -317,38 +318,61 @@ def create_single_supply_line(BASE_URL, API_KEY, ACCESS_TOKEN, batch):
 		return {"status": "error", "message": "Error", "batch_id": batch_id}
 
 
-def get_item_price_from_erpnext(trade_item_id):
-	"""
-	Look up the per-stem rate from Floriday Items > Stem Length Price by trade_item_id.
+def _trade_item_mapping(trade_item_id):
+	"""{item_code, item_group, stem_length, rate} for a Floriday trade item.
 
-	Note: the same `Stem Length Price` child table is also used by Webshop Item
-	Prices for pricing; only Floriday Items rows carry a trade_item_id, so
-	filtering on trade_item_id is sufficient to scope this query.
+	The mapping lives on Floriday Items > Floriday Item Length, a child table this
+	app owns; returns None when the id is unmapped.
 	"""
 	from ecommerce_integration.ecommerce_integration.utils import has_doctypes
 
-	if not trade_item_id:
+	if not trade_item_id or not has_doctypes("Floriday Items", "Floriday Item Length"):
 		return None
-	if not has_doctypes("Stem Length Price"):
-		# upande_webshop absent: no per-stem rates to read, so fall back to the
-		# caller's default rather than raising.
-		return None
+
+	rows = frappe.db.sql(
+		"""
+        select fi.item_code, fi.item_group, fil.stem_length, fil.rate
+        from `tabFloriday Item Length` fil
+        join `tabFloriday Items` fi on fi.name = fil.parent
+        where fil.parenttype = 'Floriday Items'
+          and fil.trade_item_id = %s
+        order by ifnull(fil.rate, 0) desc
+        limit 1
+        """,
+		(trade_item_id,),
+		as_dict=True,
+	)
+	return rows[0] if rows else None
+
+
+def get_item_price_from_erpnext(trade_item_id, item_code=None, stem_length=None, item_group=None):
+	"""Per-stem rate for a Floriday trade item, or None when nothing prices it.
+
+	The rate stored on the Floriday Items > Floriday Item Length row wins, because
+	that is the rate an operator set for this exact trade item. When that row
+	has no rate — or when the caller already knows the item and passes it in —
+	the shared post-harvest chain prices it instead (`Customer pricing` ->
+	`Item Price` -> `Stem Length.price`), so a mapped trade item with a blank
+	rate no longer silently skips its supply line.
+	"""
+	from ecommerce_integration.ecommerce_integration.utils.stem_length import (
+		resolve_stem_length_rate,
+	)
+
 	try:
-		row = frappe.db.sql(
-			"""
-            select rate
-            from `tabStem Length Price`
-            where parenttype = 'Floriday Items'
-              and trade_item_id = %s
-              and ifnull(rate, 0) > 0
-            limit 1
-            """,
-			(trade_item_id,),
-			as_dict=True,
-		)
-		if row and row[0].rate:
-			return float(row[0].rate)
-		return None
+		mapping = _trade_item_mapping(trade_item_id)
+		if mapping:
+			if mapping.rate:
+				return float(mapping.rate)
+			item_code = item_code or mapping.item_code
+			item_group = item_group or mapping.item_group
+			stem_length = stem_length or mapping.stem_length
+
+		if not item_code:
+			return None
+
+		rate = resolve_stem_length_rate(item_code, stem_length, item_group=item_group)
+		return float(rate) if rate else None
 	except Exception:
 		return None
 

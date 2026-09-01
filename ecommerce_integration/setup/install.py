@@ -133,7 +133,10 @@ def _app_resource_paths():
 	for module in get_module_list(APP_NAME) or []:
 		module_root = frappe.get_app_path(APP_NAME, frappe.scrub(module))
 		if os.path.isdir(module_root):
-			get_doc_files(files=paths, start_path=module_root)
+			# Take the return value: get_doc_files() starts with `files = files or []`,
+			# so an empty list argument is rebound to a new list and everything it
+			# collected for the first module is dropped on the floor.
+			paths = get_doc_files(files=paths, start_path=module_root)
 
 	app_root = frappe.get_app_path(APP_NAME)
 	for folder in _APP_LEVEL_DIRS:

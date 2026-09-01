@@ -3,10 +3,18 @@
 
 """Self-contained helpers for the ecommerce integration.
 
-Vendored here (rather than imported from upande_webshop) so this app carries no
-code dependency on any other custom app. Where a helper reads another app's
-Single (e.g. Webshop Settings), the read is guarded so it degrades to a safe
-default when that app/doctype is not installed.
+This app configures itself. Its channel Singles — `Biflorica Setting` and
+`Floriday Settings` — own the price list and the order-as-quotation toggle, so
+nothing here reads another app's Single. `Webshop Settings` in particular is
+never touched: it belongs to upande_webshop, and reading it on a site without
+that app queued "DocType Webshop Settings not found" onto `frappe.message_log`
+once per priced row, which surfaced as a wall of identical dialogs on the
+Biflorica Stock tab.
+
+This app reads no upande_webshop doctype at all. Enabled stock lives in its own
+`Ecommerce Enabled Stock`, Floriday trade-item mappings in its own
+`Floriday Item Length`, and every per-stem rate comes from ERPNext `Item Price`
+plus the post-harvest `Stem Length.price` master.
 """
 
 import frappe
@@ -14,12 +22,16 @@ from frappe.utils import cint
 
 USD_PRICE_LIST = "USD Price List"
 
+# The channel Singles this app owns. Probed in this order wherever a setting is
+# channel-agnostic, so a site running only one of the two still resolves.
+CHANNEL_SETTINGS = ("Biflorica Setting", "Floriday Settings")
+
 
 def has_doctypes(*doctypes):
 	"""True only when every named DocType exists on this site.
 
 	Guards raw SQL against doctypes this app references but does not own — chiefly
-	`Stem Length Price` and `Webshop Item Prices`, which belong to upande_webshop.
+	`Shelf Item` and `Stem Length`, which belong to the post-harvest suite.
 	Without this, a site running only part of the suite gets a bare
 	`MySQLdb.ProgrammingError: Table '...' doesn't exist` from the Floriday and
 	Biflorica screens instead of an empty result.
@@ -27,45 +39,67 @@ def has_doctypes(*doctypes):
 	return all(frappe.db.exists("DocType", doctype) for doctype in doctypes)
 
 
-def create_orders_as_quotation():
-	"""True when the site is configured to keep orders as draft Quotations
-	instead of creating Sales Orders directly.
+def channel_setting(fieldname, settings_doctype=None):
+	"""One value from a channel Single, or None.
 
-	Read from the Webshop Settings single when present so every order source
-	honours the same toggle. Defaults to False when the field or the doctype is
-	not on the site, so behaviour is unchanged on sites without upande_webshop.
+	`settings_doctype` names the channel; without it both are tried in
+	`CHANNEL_SETTINGS` order and the first non-empty answer wins.
+
+	Existence is CHECKED rather than a caught read failure: `frappe.get_meta` on
+	an absent doctype (and `get_cached_value` on an absent field) queue a message
+	on `frappe.message_log` *before* raising, so a try/except swallows the
+	exception and leaves the message to pop up later as a dialog.
 	"""
-	try:
-		return bool(cint(frappe.get_cached_doc("Webshop Settings").get("create_orders_as_quotation")))
-	except Exception:
-		return False
+	for doctype in [settings_doctype] if settings_doctype else CHANNEL_SETTINGS:
+		if not frappe.db.exists("DocType", doctype):
+			continue
+		if not frappe.get_meta(doctype).has_field(fieldname):
+			continue
+		value = frappe.db.get_single_value(doctype, fieldname)
+		if value:
+			return value
+	return None
 
 
-def _resolve_price_list():
-	"""Resolve the price list to read Item Price rates from.
+def create_orders_as_quotation(settings_doctype=None):
+	"""True when this channel keeps incoming orders as draft Quotations.
 
-	Prefers a Webshop Settings.price_list value if that app/field is present,
-	then the canonical "USD Price List", then the first enabled USD selling
-	Price List. Fully guarded so it never raises on a site without upande_webshop.
+	Read from the channel's own Single (`Biflorica Setting` /
+	`Floriday Settings`), so each channel decides for itself. Defaults to False,
+	which is the historical behaviour.
 	"""
-	configured = None
-	try:
-		if frappe.get_meta("Webshop Settings").has_field("price_list"):
-			configured = frappe.db.get_single_value("Webshop Settings", "price_list")
-	except Exception:
-		configured = None
+	return bool(cint(channel_setting("create_orders_as_quotation", settings_doctype)))
+
+
+def _resolve_price_list(settings_doctype=None):
+	"""Resolve the selling price list to read Item Price rates from.
+
+	The channel's own `price_list` wins; otherwise the canonical
+	"USD Price List", then the first enabled USD selling Price List. Memoized per
+	request and per channel: the price chain asks once per item priced, and the
+	answer cannot change mid-request.
+	"""
+	cache = getattr(frappe.local, "_ei_price_list", None)
+	if cache is None:
+		cache = frappe.local._ei_price_list = {}
+	if settings_doctype in cache:
+		return cache[settings_doctype]
+
+	configured = channel_setting("price_list", settings_doctype)
 
 	if configured and frappe.db.exists("Price List", configured):
-		return configured
-	if frappe.db.exists("Price List", USD_PRICE_LIST):
-		return USD_PRICE_LIST
-	usd_lists = frappe.get_all(
-		"Price List",
-		filters={"currency": "USD", "enabled": 1, "selling": 1},
-		fields=["name"],
-		order_by="creation asc",
-		limit=1,
-	)
-	if usd_lists:
-		return usd_lists[0].name
-	return configured
+		resolved = configured
+	elif frappe.db.exists("Price List", USD_PRICE_LIST):
+		resolved = USD_PRICE_LIST
+	else:
+		usd_lists = frappe.get_all(
+			"Price List",
+			filters={"currency": "USD", "enabled": 1, "selling": 1},
+			fields=["name"],
+			order_by="creation asc",
+			limit=1,
+		)
+		resolved = usd_lists[0].name if usd_lists else configured
+
+	cache[settings_doctype] = resolved
+	return resolved

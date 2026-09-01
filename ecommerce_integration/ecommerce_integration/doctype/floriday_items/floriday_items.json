@@ -41,7 +41,8 @@
   {
    "fieldname": "table_ppvq",
    "fieldtype": "Table",
-   "options": "Stem Length Price"
+   "options": "Floriday Item Length",
+   "label": "Stem Lengths"
   },
   {
    "fetch_from": "item_code.item_group",

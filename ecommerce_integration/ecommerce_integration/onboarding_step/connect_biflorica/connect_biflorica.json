@@ -1,0 +1,23 @@
+{
+ "action": "Update Settings",
+ "action_label": "Connect Biflorica and publish offers",
+ "creation": "2026-08-28 15:24:43.135894",
+ "description": "Username and password against the configured base URL and token URL, then the warehouse (or shelf stock) offers are published from.\n\nSet the offer, deals, pre-deal and token-refresh schedules as with Floriday. Confirmed pre-deals become Biflorica confirmations when the matching Sales Order is submitted.",
+ "docstatus": 0,
+ "doctype": "Onboarding Step",
+ "field": "username",
+ "idx": 0,
+ "is_complete": 0,
+ "is_single": 1,
+ "is_skipped": 0,
+ "modified": "2026-08-28 16:21:21.878853",
+ "modified_by": "Administrator",
+ "name": "Connect Biflorica",
+ "owner": "Administrator",
+ "reference_document": "Biflorica Setting",
+ "show_form_tour": 0,
+ "show_full_form": 0,
+ "title": "Connect Biflorica",
+ "validate_action": 1,
+ "value_to_validate": "%"
+}

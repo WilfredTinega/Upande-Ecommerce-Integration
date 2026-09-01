@@ -1,15 +1,15 @@
-// Shared inline "enable stock → webshop" picker, reused by the Webshop
-// Settings, Biflorica Setting and Floriday Settings desk forms.
+// Shared inline "enable stock for the sales channels" picker, rendered on the
+// Biflorica Setting and Floriday Settings desk forms.
 //
 // Renders directly on the form (into an HTML field) — no dialog. Every item
 // currently on a Shelf (or in the configured warehouses) is listed with a
 // checkbox, its available qty, and an editable "Qty to Enable" column. Ticking
-// rows and clicking "Enable Selected Stock" PUBLISHES that qty to the storefront
-// by flipping the Stem Length Price `enabled` flag and writing its stock_qty —
-// no stock is moved. Already-enabled rows stay listed with an "On Webshop"
-// checkmark and their published qty pre-filled, so the qty can be edited or the
-// row un-published (untick + "Disable Selected") later. See
-// utils/stock_picker.set_webshop_enabled_stock / get_webshop_enabled_rows.
+// rows and clicking "Enable Selected Stock" makes that qty available to the channels
+// by flipping the Ecommerce Enabled Stock `enabled` flag and writing its qty —
+// no stock is moved. Already-enabled rows stay listed with their published qty
+// pre-filled (and an `is-enabled` class on the row), so the qty can be edited or
+// the row un-published (untick + "Disable Selected") later. See
+// utils/stock_picker.set_enabled_stock / get_enabled_stock_rows.
 
 frappe.provide("ecommerce_integration");
 
@@ -18,12 +18,12 @@ ecommerce_integration.GET_SHELF_ROWS =
 ecommerce_integration.GET_WAREHOUSE_ROWS =
 	"ecommerce_integration.ecommerce_integration.utils.stock_picker.get_warehouse_rows";
 
-// Publish endpoints: set the `enabled` flag + published qty on Stem Length Price.
+// Endpoints: set the `enabled` flag + qty on Ecommerce Enabled Stock.
 // No stock movement.
 ecommerce_integration.SET_ENABLED_STOCK =
-	"ecommerce_integration.ecommerce_integration.utils.stock_picker.set_webshop_enabled_stock";
+	"ecommerce_integration.ecommerce_integration.utils.stock_picker.set_enabled_stock";
 ecommerce_integration.GET_ENABLED_ROWS =
-	"ecommerce_integration.ecommerce_integration.utils.stock_picker.get_webshop_enabled_rows";
+	"ecommerce_integration.ecommerce_integration.utils.stock_picker.get_enabled_stock_rows";
 
 ecommerce_integration.GET_CUSTOMER_WAREHOUSE_ROWS =
 	"ecommerce_integration.ecommerce_integration.utils.stock_picker.get_customer_warehouse_rows";
@@ -31,9 +31,9 @@ ecommerce_integration.GET_CUSTOMER_WAREHOUSE_ROWS =
 // Render the inline stock picker into `fieldname` on `frm`.
 // opts: { frm, channel, fieldname, visible, source, warehouse }
 //   channel  — "Biflorica" | "Floriday" (the move method on Enable); "" shows a
-//              channel selector in the panel (Webshop Settings).
-//   source   — "shelf" (default) reads shelves; "warehouse" reads the configured
-//              Webshop warehouses' Bin stock; "customer" reads one specific
+//              channel selector in the panel.
+//   source   — "shelf" (default) reads shelves; "warehouse" reads the warehouses
+//              configured on the channel settings; "customer" reads one specific
 //              `warehouse`'s Bin stock (Customer Settings tab). Same row shape +
 //              panel + enable/disable flow either way.
 //   warehouse — required when source === "customer": the warehouse to list.
@@ -82,7 +82,7 @@ ecommerce_integration.render_shelf_move_buttons = function (opts) {
 
 	// Load the available stock and the already-published ("enabled") rows in
 	// parallel, then render once both are in. Enabled rows are merged so a
-	// published-but-out-of-stock length stays listed with its "On Webshop" check.
+	// published-but-out-of-stock length stays listed.
 	// For the "customer" source the enabled set is filtered to THIS warehouse's
 	// items in _render_shelf_rows, so unrelated published items don't leak in.
 	Promise.all([
@@ -251,11 +251,27 @@ ecommerce_integration._render_shelf_rows = function (
 			// and capped at max_qty so the value is always sellable AND in stock.
 			const raw_default = r.enabled ? Math.floor(Number(r.published_qty) || 0) : qty;
 			const default_qty = Math.min(snap_down(raw_default, step), max_qty);
-			const check_badge = r.enabled
-				? `<span class="indicator-pill green shelf-enabled-badge" title="${__(
-						"Published to webshop"
-				  )}">✓</span>`
-				: "";
+			// Status reflects the Ecommerce Enabled Stock flag, and carries the qty
+			// that is actually enabled — which is the number the channels offer, and
+			// need not equal what is on the shelf.
+			const enabled_qty = Math.floor(Number(r.published_qty) || 0);
+			// nowrap + non-breaking separator: the pill has to stay on ONE line, or
+			// "Enabled · 500" breaks after the middot and the row grows to two lines.
+			// Styles are inline: this app ships no stylesheet, and one badge is not
+			// worth adding a CSS bundle + hooks entry for. Colours come from the
+			// theme's variables so the pill still reads correctly in dark mode.
+			const pill_style =
+				"white-space:nowrap;display:inline-block;font-weight:500;" +
+				"padding:2px 8px;border-radius:10px;font-size:11px;line-height:16px;";
+			const status_cell = r.enabled
+				? `<span class="shelf-status-pill" style="${pill_style}background-color:var(--green-50);color:var(--green-600);" title="${__(
+						"Enabled for the sales channels"
+				  )}">${__("Enabled")}${
+						enabled_qty ? `&nbsp;&middot;&nbsp;${enabled_qty.toLocaleString()}` : ""
+				  }</span>`
+				: `<span class="shelf-status-pill" style="${pill_style}background-color:var(--gray-100);color:var(--gray-600);" title="${__(
+						"Not offered to the sales channels"
+				  )}">${__("Not enabled")}</span>`;
 			return `<tr data-idx="${i}" class="shelf-item-row${r.enabled ? " is-enabled" : ""}"
 					data-item-code="${frappe.utils.escape_html(r.item_code || "")}"
 					data-item-name="${frappe.utils.escape_html(r.item_name || r.item_code || "")}"
@@ -275,7 +291,7 @@ ecommerce_integration._render_shelf_rows = function (
 						title="${__("Steps of {0} (one bunch); max {1} available", [step, max_qty.toLocaleString()])}"
 						style="text-align:right;height:28px;">
 				</td>
-				<td style="width:90px;text-align:center;" class="shelf-enabled-cell">${check_badge}</td>
+				<td style="width:150px;text-align:center;white-space:nowrap;" class="shelf-status-cell">${status_cell}</td>
 			</tr>`;
 		})
 		.join("");
@@ -322,7 +338,7 @@ ecommerce_integration._render_shelf_rows = function (
 					<th>${__("Stem Length")}</th>
 					<th style="text-align:right;">${is_wh ? __("Warehouse Qty") : __("Shelf Qty")}</th>
 					<th>${__("Qty to Enable")}</th>
-					<th style="text-align:center;">${__("On Webshop")}</th>
+					<th style="width:150px;text-align:center;white-space:nowrap;">${__("Status")}</th>
 				</tr></thead>
 				<tbody>${body}</tbody>
 			</table>
@@ -450,10 +466,10 @@ ecommerce_integration._apply_shelf_filter = function ($root) {
 	$root.find(".shelf-row-counter").text(__("{0} items", [visible_items]));
 };
 
-// Publish (enable=1) or un-publish (enable=0) the ticked rows to the webshop.
-// No stock movement: this only sets the Stem Length Price `enabled` flag and,
+// Enable (enable=1) or disable (enable=0) the ticked rows for the channels.
+// No stock movement: this only sets the Ecommerce Enabled Stock `enabled` flag and,
 // when enabling, writes its stock_qty to the "Qty to Enable" value. The row
-// stays in the panel afterwards (with / without the "On Webshop" checkmark) so
+// stays in the panel afterwards, carrying its `is-enabled` row class, so
 // the published qty can be edited or the row toggled again.
 ecommerce_integration._set_selected_enabled = function ($root, frm, channel, fieldname, enable) {
 	const combined_rows = $root.data("combined-rows") || [];
@@ -470,8 +486,8 @@ ecommerce_integration._set_selected_enabled = function ($root, frm, channel, fie
 		let raw = Math.floor(Number($tr.find(".shelf-row-qty").val()) || 0);
 		if (max && raw > max) raw = max;
 		const qty = Math.floor(raw / step) * step;
-		// When enabling, require a qty above zero (that's the number the webshop
-		// shows). When disabling, qty is irrelevant.
+		// When enabling, require a qty above zero (that's the number the channels
+		// offer). When disabling, qty is irrelevant.
 		if (enable && qty <= 0) return;
 		items.push({
 			item_code: agg.item_code,
@@ -504,23 +520,35 @@ ecommerce_integration._set_selected_enabled = function ($root, frm, channel, fie
 		args: enable_args,
 		freeze: true,
 		freeze_message: enable
-			? __("Publishing stock to the webshop…")
-			: __("Removing stock from the webshop…"),
+			? __("Enabling stock for the channels…")
+			: __("Disabling stock…"),
 		callback(r) {
 			$btns.prop("disabled", false);
 			const updated = (r.message && r.message.updated) || 0;
 			const capped = (r.message && r.message.capped) || 0;
+			// The server reports its own unavailability rather than raising, so a
+			// missing publish target has to be surfaced here — otherwise it reads
+			// as a green "0 length(s) published" and looks like the click worked.
+			const unavailable = r.message && r.message.unavailable;
+			if (unavailable) {
+				frappe.msgprint({
+					title: __("Nothing was published"),
+					message: unavailable,
+					indicator: "red",
+				});
+				return;
+			}
 			let message;
 			let indicator = "green";
 			if (enable) {
-				message = __("{0} length(s) published to the webshop.", [updated]);
+				message = __("{0} length(s) enabled.", [updated]);
 				if (capped) {
 					// Server reduced one or more qty to the available stock.
 					message += " " + __("{0} capped to available stock.", [capped]);
 					indicator = "orange";
 				}
 			} else {
-				message = __("{0} length(s) removed from the webshop.", [updated]);
+				message = __("{0} length(s) disabled.", [updated]);
 			}
 			frappe.show_alert({ message, indicator }, capped ? 10 : 7);
 			// Reload so the checkmark + published qty reflect the new state. Carry the

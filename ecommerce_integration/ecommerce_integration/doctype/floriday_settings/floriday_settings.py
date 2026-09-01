@@ -529,18 +529,18 @@ def _get_floriday_item_index():
 	"""
 	from ecommerce_integration.ecommerce_integration.utils import has_doctypes
 
-	# `Stem Length Price` belongs to upande_webshop. Without it there are no
-	# trade-item mappings to index, so the Stock tab shows nothing rather than 500ing.
-	if not has_doctypes("Floriday Items", "Stem Length Price"):
+	# Without any trade-item mapping there is nothing to index, so the Stock tab
+	# shows nothing rather than 500ing.
+	if not has_doctypes("Floriday Items", "Floriday Item Length"):
 		return {}, {}
 
 	rows = frappe.db.sql(
 		"""
-		SELECT fi.item_code, fi.item_name, slp.stem_length, slp.trade_item_id
+		SELECT fi.item_code, fi.item_name, fil.stem_length, fil.trade_item_id
 		FROM `tabFloriday Items` fi
-		INNER JOIN `tabStem Length Price` slp ON slp.parent = fi.name
-		WHERE slp.parenttype = 'Floriday Items'
-		AND slp.trade_item_id IS NOT NULL AND slp.trade_item_id != ''
+		INNER JOIN `tabFloriday Item Length` fil ON fil.parent = fi.name
+		WHERE fil.parenttype = 'Floriday Items'
+		AND fil.trade_item_id IS NOT NULL AND fil.trade_item_id != ''
 		""",
 		as_dict=True,
 	)
@@ -665,8 +665,8 @@ def _floriday_flagged_qty_map(item_codes, warehouses):
 	align. Keys use _normalize_stem_length on both sides so "52cm"/"52"/"52 cm"
 	match the call site's normalized stem length.
 	"""
-	from ecommerce_integration.ecommerce_integration.doctype.floriday_items.floriday_items import (
-		_normalize_stem_length,
+	from ecommerce_integration.ecommerce_integration.utils.post_harvest import (
+		canonical_stem_length,
 	)
 	from ecommerce_integration.ecommerce_integration.utils.shelf_stock import (
 		get_shelf_qty_by_length,
@@ -691,7 +691,8 @@ def _floriday_flagged_qty_map(item_codes, warehouses):
 	for code in item_codes:
 		# {stem_length_name: total_stems} across all shelves for this item.
 		for stem_length_name, qty in get_shelf_qty_by_length(code).items():
-			key = (code, _normalize_stem_length(stem_length_name))
+			# Shelf rows Link to the stem-length master on some farms' builds.
+			key = (code, canonical_stem_length(stem_length_name))
 			qty_map[key] = qty_map.get(key, 0.0) + flt(qty)
 	return qty_map
 
@@ -861,11 +862,11 @@ def get_floriday_batch_rows():
 	"""Batch rows derived from the items ENABLED on the Stock tab.
 
 	The Stock tab's Enable/Disable picker publishes rows by flipping
-	`Stem Length Price.enabled` (see shelf_move.js / set_webshop_enabled_stock).
+	`Ecommerce Enabled Stock.enabled` (see shelf_move.js / set_enabled_stock).
 	Those enabled rows — not the separate "Shelf Stock Items" picker — are the
 	source for batching: every enabled (item, stem length) that also has a
 	Floriday `trade_item_id` mapping is returned, with its published qty
-	(Stem Length Price.stock_qty) floored to a 200 multiple.
+	(Ecommerce Enabled Stock.stock_qty) floored to a 200 multiple.
 
 	Returns a list of {item_code, item_name, stem_length, trade_item_id, qty},
 	one per batchable enabled row (qty >= 200, mapping present). Rows without a
@@ -874,8 +875,8 @@ def get_floriday_batch_rows():
 	from ecommerce_integration.ecommerce_integration.doctype.floriday_items.floriday_items import (
 		_normalize_stem_length,
 	)
-	from ecommerce_integration.ecommerce_integration.utils.webshop_stock import (
-		get_webshop_enabled_rows,
+	from ecommerce_integration.ecommerce_integration.utils.enabled_stock import (
+		get_enabled_stock_rows,
 	)
 
 	BATCH_MULTIPLE = 200
@@ -892,7 +893,7 @@ def get_floriday_batch_rows():
 			mapping_by_norm[(code, _normalize_stem_length(m.stem_length))] = m
 
 	rows = []
-	for r in get_webshop_enabled_rows():
+	for r in get_enabled_stock_rows():
 		match = mapping_by_norm.get((r.get("item_code"), _normalize_stem_length(r.get("stem_length"))))
 		if not match:
 			continue  # enabled length not offered to Floriday — can't batch it
@@ -1098,16 +1099,16 @@ def get_item_floriday_meta(item_code: str):
 	from ecommerce_integration.ecommerce_integration.utils import has_doctypes
 
 	rows = []
-	if has_doctypes("Floriday Items", "Stem Length Price"):
+	if has_doctypes("Floriday Items", "Floriday Item Length"):
 		rows = frappe.db.sql(
 			"""
-			SELECT slp.stem_length, slp.trade_item_id
+			SELECT fil.stem_length, fil.trade_item_id
 			FROM `tabFloriday Items` fi
-			INNER JOIN `tabStem Length Price` slp ON slp.parent = fi.name
-			WHERE slp.parenttype = 'Floriday Items'
+			INNER JOIN `tabFloriday Item Length` fil ON fil.parent = fi.name
+			WHERE fil.parenttype = 'Floriday Items'
 			AND fi.item_code = %s
-			AND slp.trade_item_id IS NOT NULL AND slp.trade_item_id != ''
-			ORDER BY slp.stem_length
+			AND fil.trade_item_id IS NOT NULL AND fil.trade_item_id != ''
+			ORDER BY fil.stem_length
 			""",
 			(template,),
 			as_dict=True,

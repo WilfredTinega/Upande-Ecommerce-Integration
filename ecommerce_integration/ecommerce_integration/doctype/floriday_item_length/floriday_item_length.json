@@ -1,0 +1,47 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "creation": "2026-09-01 17:20:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "stem_length",
+  "trade_item_id",
+  "rate"
+ ],
+ "fields": [
+  {
+   "fieldname": "stem_length",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Stem Length",
+   "reqd": 1
+  },
+  {
+   "description": "Issued by Floriday. Populated by Fetch Trade Item IDs; the supply-line and order flows map a batch back to this item through it.",
+   "fieldname": "trade_item_id",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Trade Item ID"
+  },
+  {
+   "description": "Optional per-trade-item override. Left blank, the rate comes from Item Price / the post-harvest Stem Length master.",
+   "fieldname": "rate",
+   "fieldtype": "Currency",
+   "in_list_view": 1,
+   "label": "Rate"
+  }
+ ],
+ "istable": 1,
+ "links": [],
+ "modified": "2026-09-01 17:20:00.000000",
+ "modified_by": "Administrator",
+ "module": "Ecommerce Integration",
+ "name": "Floriday Item Length",
+ "owner": "Administrator",
+ "permissions": [],
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": []
+}

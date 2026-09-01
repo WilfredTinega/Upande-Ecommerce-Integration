@@ -18,7 +18,7 @@ def _floriday_setting(fieldname):
 def _floriday_order_target_doctype():
 	"""The doctype Floriday imports create — "Quotation" when the webshop is set
 	to create orders as Quotations, otherwise "Sales Order"."""
-	return "Quotation" if create_orders_as_quotation() else "Sales Order"
+	return "Quotation" if create_orders_as_quotation("Floriday Settings") else "Sales Order"
 
 
 def _floriday_order_exists(floriday_order_id):
@@ -690,7 +690,7 @@ def create_sales_order_from_floriday(floriday_order, warehouse, settings=None):
 	delivery GLN to a Delivery Point and writing per-bunch amounts directly.
 
 	Creates a Sales Order by default, or a draft Quotation when the webshop is
-	configured to create orders as Quotations (Webshop Settings > "Create Orders
+	configured to create orders as Quotations (Floriday Settings > "Create Orders
 	as Quotation"). In Quotation mode the document is left as a draft for staff
 	to review and convert to a Sales Order; all the integration custom fields are
 	still stamped where they exist on Quotation (guarded per field)."""
@@ -1190,7 +1190,7 @@ def get_default_customer():
 
 def get_erpnext_item_code(floriday_trade_item_id):
 	"""
-	Get ERPNext item code from Floriday trade item ID via Floriday Items / Stem Length Price.
+	Get ERPNext item code from Floriday trade item ID via Floriday Items / Floriday Item Length.
 	Falls back to Item.floriday_trade_item_id for legacy items.
 	"""
 	try:
