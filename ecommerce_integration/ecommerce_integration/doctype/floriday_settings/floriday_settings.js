@@ -119,11 +119,38 @@ function format_sales_order_result(m) {
 	const s = m.summary || {};
 	const processed = s.processed || 0;
 	const errors = s.errors || 0;
+	const duplicates = s.duplicates || 0;
+	const date_filtered = s.date_filtered || 0;
+	const skipped = s.skipped || 0;
+	const total = s.total_from_api || 0;
+
+	// "Nothing created" has several very different causes, and collapsing them
+	// into one line sent us hunting for a bug when the order was simply already
+	// imported. Say which it was.
 	if (processed === 0 && errors === 0) {
-		return { message: __("No new sales orders"), indicator: "blue" };
+		const why = [];
+		if (duplicates) why.push(__("{0} already imported", [duplicates]));
+		if (date_filtered) why.push(__("{0} outside the time window", [date_filtered]));
+		if (skipped) {
+			const statuses = Object.keys(s.skipped_statuses || {});
+			why.push(
+				statuses.length
+					? __("{0} skipped (status {1})", [skipped, statuses.join(", ")])
+					: __("{0} skipped", [skipped])
+			);
+		}
+		if (!why.length) {
+			return { message: __("No sales orders returned by Floriday"), indicator: "blue" };
+		}
+		return {
+			message: __("No new sales orders — of {0} fetched: {1}", [total, why.join(", ")]),
+			indicator: "blue",
+		};
 	}
+
 	const parts = [];
-	if (processed) parts.push(__("Created {0} sales order(s)", [processed]));
+	if (processed) parts.push(__("Created {0} draft sales order(s)", [processed]));
+	if (duplicates) parts.push(__("{0} already imported", [duplicates]));
 	if (errors) parts.push(__("{0} error(s)", [errors]));
 	return { message: parts.join(", "), indicator: errors ? "orange" : "green" };
 }
@@ -373,7 +400,7 @@ frappe.ui.form.on("Floriday Settings", {
 	},
 
 	create_batch(frm) {
-		// Batch the items ENABLED on the Stock tab (Stem Length Price.enabled = 1),
+		// Batch the items ENABLED on the Stock tab (Ecommerce Enabled Stock.enabled = 1),
 		// each at its published qty floored to 200. The server resolves the Floriday
 		// trade_item_id per (item, length) and drops rows without a mapping or < 200.
 		const stop_progress = start_inline_progress(frm, "create_batch", "Create Batches");

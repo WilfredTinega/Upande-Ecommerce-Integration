@@ -1,0 +1,21 @@
+{
+ "action": "Create Entry",
+ "action_label": "Map each Shopify variant to a class and stem count",
+ "creation": "2026-08-28 15:24:43.135894",
+ "description": "One row per Shopify variant: class (Box, Fee or Packaging) and stem count. A new box tier is a new row, not code.\n\nMatching is by **variant id, not SKU** \u2014 every product on this store has a null SKU. Only `Box` rows are allocated; fee and packaging lines ride along and are ignored by fulfilment. Seeding guesses from the live catalogue and lets anything unrecognised through as a zero-stem Box, so review the rows afterwards.",
+ "docstatus": 0,
+ "doctype": "Onboarding Step",
+ "idx": 0,
+ "is_complete": 0,
+ "is_single": 0,
+ "is_skipped": 0,
+ "modified": "2026-08-28 16:21:21.878853",
+ "modified_by": "Administrator",
+ "name": "Map Shopify Products",
+ "owner": "Administrator",
+ "reference_document": "Shopify Product Map",
+ "show_form_tour": 0,
+ "show_full_form": 1,
+ "title": "Map Shopify Products",
+ "validate_action": 1
+}

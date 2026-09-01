@@ -13,7 +13,9 @@
   "size",
   "quantity",
   "packing",
+  "sizes_stems",
   "price_per_stem",
+  "price_per_stem_list",
   "price",
   "box_type",
   "platform",
@@ -72,10 +74,25 @@
    "read_only": 1
   },
   {
+   "description": "Stems of each size inside one box, parallel to `size` (e.g. 39/39/39/39/39). Biflorica recomputes this, so it is the authoritative stems-per-box.",
+   "fieldname": "sizes_stems",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Sizes Stems",
+   "read_only": 1
+  },
+  {
    "fieldname": "price_per_stem",
    "fieldtype": "Currency",
    "in_list_view": 1,
    "label": "Price / Stem",
+   "read_only": 1
+  },
+  {
+   "description": "Rate per stem for each size, parallel to `size` (e.g. 0.20/0.25/0.30). The numeric Price / Stem field cannot hold a list.",
+   "fieldname": "price_per_stem_list",
+   "fieldtype": "Data",
+   "label": "Price / Stem (per size)",
    "read_only": 1
   },
   {

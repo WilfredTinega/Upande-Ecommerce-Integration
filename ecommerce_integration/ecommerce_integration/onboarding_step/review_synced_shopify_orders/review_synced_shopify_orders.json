@@ -1,0 +1,21 @@
+{
+ "action": "Go to Page",
+ "action_label": "Review the Shopify orders that synced in",
+ "creation": "2026-08-28 15:24:43.135894",
+ "description": "Orders are stored verbatim, every cart attribute and line-item property kept, and they are the source of truth \u2014 **no Sales Order and no Quotation is created**.\n\nA prepaid \"3 boxes over 3 months\" order carries its duration and start date as attributes; anything longer than one delivery also creates a **Shopify Subscription** plus one allocation per delivery.",
+ "docstatus": 0,
+ "doctype": "Onboarding Step",
+ "idx": 0,
+ "is_complete": 0,
+ "is_single": 0,
+ "is_skipped": 0,
+ "modified": "2026-08-28 16:21:21.878853",
+ "modified_by": "Administrator",
+ "name": "Review Synced Shopify Orders",
+ "owner": "Administrator",
+ "path": "List/Shopify Order",
+ "show_form_tour": 0,
+ "show_full_form": 0,
+ "title": "Review Synced Shopify Orders",
+ "validate_action": 1
+}

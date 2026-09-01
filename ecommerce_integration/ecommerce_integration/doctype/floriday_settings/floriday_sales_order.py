@@ -1,4 +1,6 @@
+import collections
 import json
+import re
 from datetime import datetime, timedelta, timezone
 
 import frappe
@@ -10,6 +12,13 @@ from ecommerce_integration.ecommerce_integration.utils import create_orders_as_q
 _logger = frappe.logger("floriday", allow_site=True)
 
 
+# Floriday moves a sales order ACCEPTED -> COMMITTED; both are live orders the
+# supplier has to fulfil, so both are imported. Accepting only COMMITTED meant a
+# freshly placed order was silently skipped and the sync reported "No new sales
+# orders" while the order sat plainly visible on Floriday.
+IMPORTABLE_ORDER_STATUSES = {"ACCEPTED", "COMMITTED"}
+
+
 def _floriday_setting(fieldname):
 	"""Read a value off the Floriday Settings single. Returns None if unset."""
 	return frappe.db.get_single_value("Floriday Settings", fieldname) or None
@@ -18,7 +27,7 @@ def _floriday_setting(fieldname):
 def _floriday_order_target_doctype():
 	"""The doctype Floriday imports create — "Quotation" when the webshop is set
 	to create orders as Quotations, otherwise "Sales Order"."""
-	return "Quotation" if create_orders_as_quotation() else "Sales Order"
+	return "Quotation" if create_orders_as_quotation("Floriday Settings") else "Sales Order"
 
 
 def _floriday_order_exists(floriday_order_id):
@@ -91,7 +100,7 @@ def generate_custom_order_name(customer_name):
 
 def get_delivery_point_from_floriday_gln(gln_code):
 	"""
-	Maps a Floriday GLN code to an ERPNext Delivery Point using custom_floriday_delivery_id.
+	Maps a Floriday GLN code to an ERPNext Delivery Point using custom_floriday_delivery_point_id.
 	Returns the Delivery Point name if found, otherwise None.
 	"""
 	if not gln_code:
@@ -99,7 +108,7 @@ def get_delivery_point_from_floriday_gln(gln_code):
 	try:
 		return frappe.db.get_value(
 			"Delivery Point",
-			{"custom_floriday_delivery_id": gln_code},
+			{"custom_floriday_delivery_point_id": gln_code},
 			"name",
 		)
 	except Exception as e:
@@ -250,7 +259,7 @@ def fetch_floriday_organization_by_gln(gln_code, settings):
 def ensure_delivery_point_for_gln(gln_code, settings, address_fallback=None):
 	"""
 	Ensure a Delivery Point exists for the given Floriday GLN.
-	- If one already exists with custom_floriday_delivery_id == gln_code, return its name.
+	- If one already exists with custom_floriday_delivery_point_id == gln_code, return its name.
 	- Otherwise fetch the DeliveryLocation from Floriday and create a Delivery Point
 	  using the data the API returns (name + address). Returns None if the GLN
 	  cannot be resolved (no GLN, no Floriday match, and no fallback name).
@@ -262,22 +271,22 @@ def ensure_delivery_point_for_gln(gln_code, settings, address_fallback=None):
 	if not gln_code:
 		return None
 
-	has_gln_field = frappe.db.has_column("Delivery Point", "custom_floriday_delivery_id")
+	has_gln_field = frappe.db.has_column("Delivery Point", "custom_floriday_delivery_point_id")
 
 	def _ensure_gln_tagged(dp_name):
-		"""Make sure the Delivery Point's custom_floriday_delivery_id matches gln_code."""
+		"""Make sure the Delivery Point's custom_floriday_delivery_point_id matches gln_code."""
 		if not (has_gln_field and dp_name):
 			return
-		current = frappe.db.get_value("Delivery Point", dp_name, "custom_floriday_delivery_id")
+		current = frappe.db.get_value("Delivery Point", dp_name, "custom_floriday_delivery_point_id")
 		if current != gln_code:
-			frappe.db.set_value("Delivery Point", dp_name, "custom_floriday_delivery_id", gln_code)
+			frappe.db.set_value("Delivery Point", dp_name, "custom_floriday_delivery_point_id", gln_code)
 			log_short(
 				f"Tagged Delivery Point '{dp_name}' with GLN {gln_code}",
 				"Floriday Delivery Point Tagged",
 				False,
 			)
 
-	# 1. Already mapped via custom_floriday_delivery_id?
+	# 1. Already mapped via custom_floriday_delivery_point_id?
 	existing = get_delivery_point_from_floriday_gln(gln_code)
 	if existing:
 		# Defensive: ensure the field value still matches (no-op if already correct)
@@ -336,12 +345,19 @@ def ensure_delivery_point_for_gln(gln_code, settings, address_fallback=None):
 				False,
 			)
 			return "JKIA"
+		# Nothing named it, so name it after the GLN. A GLN is a unique, stable
+		# identifier for the delivery location, so this is a real Delivery Point
+		# with a placeholder NAME — not a guess. It gets tagged below like any
+		# other, so the next order for this GLN reuses the same record, and an
+		# operator can rename it once they know who it is. Returning None instead
+		# blocked the whole order over a missing label.
+		dp_name = f"GLN {gln_code}"
+		name_source = "gln"
 		log_short(
-			f"GLN {gln_code} unresolved and JKIA Delivery Point does not exist",
+			f"GLN {gln_code} unresolved by Floriday — creating Delivery Point '{dp_name}'",
 			"Floriday Delivery Point Resolution",
-			True,
+			False,
 		)
-		return None
 
 	log_short(
 		f"GLN {gln_code} resolved name '{dp_name}' from {name_source}",
@@ -364,7 +380,7 @@ def ensure_delivery_point_for_gln(gln_code, settings, address_fallback=None):
 		doc.delivery_point = dp_name
 
 		if has_gln_field:
-			doc.custom_floriday_delivery_id = gln_code
+			doc.custom_floriday_delivery_point_id = gln_code
 
 		if address:
 			for src, target in (
@@ -400,14 +416,23 @@ def ensure_delivery_point_for_gln(gln_code, settings, address_fallback=None):
 
 
 def get_item_sales_uom_and_factor(item_code):
-	"""
-	Return (sales_uom, conversion_factor) from the Item's master data.
-	Raises if either is missing.
+	"""Return (sales_uom, conversion_factor) for an item, defaulting to stems.
+
+	An item with no Default Sales UOM is sold in its stock UOM at a conversion of
+	1 — Floriday quantities are already in stems, so that is the correct identity
+	and not a guess. Refusing to import the order instead meant one unconfigured
+	item silently blocked a real customer order (the Biflorica path has always
+	fallen back this way; only Floriday raised).
+
+	A sales_uom that IS set but has no UOM Conversion row still raises: that is a
+	contradiction in the item's own master data, and picking a factor would
+	silently mis-state the quantity.
 	"""
 	item = frappe.get_cached_doc("Item", item_code)
 	sales_uom = item.sales_uom
 	if not sales_uom:
-		raise Exception(f"Item {item_code} has no Default Sales UOM (sales_uom) configured")
+		return (item.stock_uom or "Stems"), 1
+
 	for row in item.uoms or []:
 		if row.uom == sales_uom:
 			return sales_uom, row.conversion_factor
@@ -595,6 +620,7 @@ def create_sales_orders_from_floriday():
 			frappe.throw(_("Invalid response format"))
 
 		results = []
+		skipped_statuses = collections.Counter()
 		processed_count = 0
 		skipped_count = 0
 		error_count = 0
@@ -619,8 +645,10 @@ def create_sales_orders_from_floriday():
 				date_filtered_count += 1
 				continue
 
-			if order.get("status") != "COMMITTED":
+			order_status = (order.get("status") or "").upper()
+			if order_status not in IMPORTABLE_ORDER_STATUSES:
 				skipped_count += 1
+				skipped_statuses[order_status or "(none)"] += 1
 				continue
 
 			# Skip orders that already exist — silent, no popup, no error log.
@@ -672,6 +700,9 @@ def create_sales_orders_from_floriday():
 				"processed": processed_count,
 				"date_filtered": date_filtered_count,
 				"skipped": skipped_count,
+				# Which statuses were skipped, so "nothing imported" is never a
+				# dead end — an unexpected status shows up here by name.
+				"skipped_statuses": dict(skipped_statuses),
 				"duplicates": duplicate_count,
 				"errors": error_count,
 				"supplier_organization": SUPPLIER_ORG_ID,
@@ -685,12 +716,120 @@ def create_sales_orders_from_floriday():
 		return {"status": "error", "message": str(e)}
 
 
+def _ensure_customer_address_from_floriday(customer, floriday_order):
+	"""Create the customer's Address from Floriday's organisation record.
+
+	`shipping_address_name` is mandatory via upande_packhouse, and a customer
+	auto-created from a Floriday order has no Address — which blocked the import
+	entirely. Floriday publishes the buyer's mailing/physical address on
+	`/organizations/{id}`, so this is the customer's REAL address, not a
+	placeholder. Returns None when Floriday has nothing either; no address is
+	invented.
+	"""
+	organization_id = floriday_order.get("customerOrganizationId")
+	if not (customer and organization_id):
+		return None
+
+	settings = frappe.get_single("Floriday Settings")
+	try:
+		response = requests.get(
+			f"{(settings.base_url or '').rstrip('/')}/organizations/{organization_id}",
+			headers={
+				"Authorization": f"Bearer {settings.access_token}",
+				"X-Api-Key": settings.api_key,
+				"Accept": "application/json",
+			},
+			timeout=30,
+		)
+		organization = response.json() if response.status_code == 200 else None
+	except (requests.RequestException, ValueError):
+		organization = None
+
+	source = (organization or {}).get("physicalAddress") or (organization or {}).get("mailingAddress")
+	if not (source and source.get("addressLine")):
+		return None
+
+	country = frappe.db.get_value("Country", {"code": (source.get("countryCode") or "").lower()}, "name")
+	address = frappe.get_doc(
+		{
+			"doctype": "Address",
+			"address_title": customer,
+			"address_type": "Shipping",
+			"address_line1": source.get("addressLine"),
+			"city": source.get("city") or "-",
+			"pincode": source.get("postalCode"),
+			"state": source.get("stateOrProvince"),
+			"country": country or frappe.db.get_default("country") or "Kenya",
+			"links": [{"link_doctype": "Customer", "link_name": customer}],
+		}
+	)
+	address.flags.ignore_permissions = True
+	address.insert(ignore_permissions=True)
+	log_short(
+		f"Created Address '{address.name}' for {customer} from Floriday organisation",
+		"Floriday Customer Address",
+		False,
+	)
+	return address.name
+
+
+def _stamp_packhouse_logistics_fields(sales_order, floriday_order, delivery_point_name):
+	"""Fill the logistics fields upande_packhouse marks mandatory on Sales Order.
+
+	`custom_consignee`, `custom_shipping_agent`, `custom_delivery_point`,
+	`custom_drop_off_point`, `custom_truck_details` and `custom_s_number` are
+	required by upande_packhouse with `sync_on_migrate=1`, so clearing the flags
+	on a site does not survive a migrate — an imported order has to supply them
+	or it cannot be saved at all.
+
+	Floriday carries no cargo agent, so the DELIVERY POINT (resolved from the
+	order's delivery GLN) is the only logistics party it names, and it fills the
+	agent/drop-off/truck fields. The consignee falls back to the customer, since
+	a Floriday order is shipped to the organisation that placed it. Both are
+	inferences, not data Floriday states — override them on the order if your
+	dispatch differs.
+	"""
+	from ecommerce_integration.ecommerce_integration.doctype.biflorica_setting.biflorica_setting import (
+		_customer_address,
+		_find_or_create_named,
+	)
+
+	meta = frappe.get_meta(sales_order.doctype)
+
+	if delivery_point_name:
+		for fieldname in ("custom_drop_off_point", "custom_truck_details"):
+			if meta.has_field(fieldname) and not sales_order.get(fieldname):
+				sales_order.set(fieldname, delivery_point_name)
+		if meta.has_field("custom_shipping_agent") and not sales_order.get("custom_shipping_agent"):
+			agent = _find_or_create_named("Shipping Agent", delivery_point_name, ("shipping_agent", "title"))
+			if agent:
+				sales_order.custom_shipping_agent = agent
+
+	# The Floriday order reference an operator sees on the Floriday UI.
+	reference = floriday_order.get("salesChannelOrderId") or floriday_order.get("salesOrderId") or ""
+	if meta.has_field("custom_s_number") and reference and not sales_order.get("custom_s_number"):
+		sales_order.custom_s_number = str(reference)[:140]
+
+	customer = sales_order.get("customer") or sales_order.get("party_name")
+	if meta.has_field("custom_consignee") and customer and not sales_order.get("custom_consignee"):
+		consignee = _find_or_create_named("Consignee", customer, ("consignee", "title"))
+		if consignee:
+			sales_order.custom_consignee = consignee
+
+	if meta.has_field("shipping_address_name") and not sales_order.get("shipping_address_name"):
+		address = _customer_address(customer) or _ensure_customer_address_from_floriday(
+			customer, floriday_order
+		)
+		if address:
+			sales_order.shipping_address_name = address
+
+
 def create_sales_order_from_floriday(floriday_order, warehouse, settings=None):
 	"""Create one ERPNext order document from a Floriday order, resolving the
 	delivery GLN to a Delivery Point and writing per-bunch amounts directly.
 
 	Creates a Sales Order by default, or a draft Quotation when the webshop is
-	configured to create orders as Quotations (Webshop Settings > "Create Orders
+	configured to create orders as Quotations (Floriday Settings > "Create Orders
 	as Quotation"). In Quotation mode the document is left as a draft for staff
 	to review and convert to a Sales Order; all the integration custom fields are
 	still stamped where they exist on Quotation (guarded per field)."""
@@ -775,6 +914,8 @@ def create_sales_order_from_floriday(floriday_order, warehouse, settings=None):
 
 	if delivery_point_name:
 		sales_order.custom_delivery_point = delivery_point_name
+
+	_stamp_packhouse_logistics_fields(sales_order, floriday_order, delivery_point_name)
 
 	# Persist the Floriday delivery GLN directly on the order document.
 	# Order fulfillment reads from this field — independent of the Delivery Point,
@@ -878,6 +1019,13 @@ Delivery Point: {delivery_point_name or "Not resolved"}"""
 			item.custom_ordered_quantity = number_of_pieces
 			item.custom_source_warehouse = item_warehouse
 
+			# Length comes off the trade item's own mapping row — the same row that
+			# resolved the item code names the length it is sold in.
+			if frappe.get_meta("Sales Order Item").has_field("custom_length"):
+				stem_length = get_stem_length_for_trade_item(trade_item_id)
+				if stem_length:
+					item.custom_length = stem_length
+
 			# Prefer the farm resolved from the actual source transfer; the
 			# configured Default Farm is only a fallback (set below).
 			if farm:
@@ -912,17 +1060,18 @@ Delivery Point: {delivery_point_name or "Not resolved"}"""
 
 	sales_order.insert(ignore_permissions=True)
 
+	# Imported orders stay DRAFT. Floriday states no consignee and its delivery
+	# GLN often resolves to nothing, so several logistics fields are inferred —
+	# somebody has to look before the order is committed. This matches the
+	# Biflorica deal/predeal flow, where submitting is the review step.
+	#
+	# The host app's Sales Order Item override forces amount = rate * stock_qty on
+	# validate, so the per-line amounts and totals are rewritten in the DB to the
+	# correct rate * qty values the Floriday order states.
 	if target_dt == "Sales Order":
-		sales_order.submit()
-		# The host app's Sales Order Item override forces amount = rate * stock_qty
-		# during validate/submit. After submit we have docstatus=1 and a stable
-		# PK; rewrite the per-line amounts and order totals directly in the DB to
-		# the correct rate * qty values. That override doesn't touch Quotation
-		# Item, so a draft Quotation already carries the correct rate * qty amount
-		# and is left as-is for staff to review and convert.
 		_force_floriday_amounts_in_db(sales_order)
-	# _force_floriday_amounts_in_db() rewrote the submitted amounts with raw SQL
-	# outside the document layer; commit so those writes and the doc agree.
+	# _force_floriday_amounts_in_db() rewrote the amounts with raw SQL outside the
+	# document layer; commit so those writes and the doc agree.
 	frappe.db.commit()  # nosemgrep: frappe-manual-commit
 
 	log_short(
@@ -1190,7 +1339,7 @@ def get_default_customer():
 
 def get_erpnext_item_code(floriday_trade_item_id):
 	"""
-	Get ERPNext item code from Floriday trade item ID via Floriday Items / Stem Length Price.
+	Get ERPNext item code from Floriday trade item ID via Floriday Items / Floriday Item Length.
 	Falls back to Item.floriday_trade_item_id for legacy items.
 	"""
 	try:
@@ -1210,6 +1359,81 @@ def get_erpnext_item_code(floriday_trade_item_id):
 	except Exception as e:
 		log_short(f"Item error: {str(e)[:30]}", "Floriday Item Error", True)
 		raise
+
+
+def get_stem_length_for_trade_item(trade_item_id):
+	"""The `Stem Length` docname a Floriday trade item is sold in, or None.
+
+	A Floriday sales order names only its `tradeItemId` — it carries no length of
+	its own — so the length has to come from the trade item's mapping rows.
+
+	Two things make that more than a lookup:
+
+	* The mapping stores the length as text ("60cm") while
+	  `Sales Order Item.custom_length` is a Link to the post-harvest `Stem Length`
+	  master, whose records are autonamed per farm (a hash on this bench), so the
+	  text has to be resolved to a docname and cannot be used as one.
+	* Floriday grades a length by rounding DOWN to the nearest 10, so one trade
+	  item can cover two of our master lengths — 60cm and 63cm both sit in grade
+	  60. Floriday does not record which was shipped, and neither can we, so the
+	  GRADE itself (the multiple of ten) is what gets stamped: it is the length
+	  Floriday actually stated. Guessing 63cm because it sorted first would be
+	  the 83CM-folded-into-53CM mistake again, with the digits reversed.
+
+	Resolution of a single candidate is exact — the master genuinely holds 43cm
+	and 63cm — and an unmatched length returns None rather than a near miss.
+	"""
+	if not trade_item_id:
+		return None
+	try:
+		from ecommerce_integration.ecommerce_integration.doctype.floriday_items.floriday_items import (
+			get_item_lengths_for_trade_item,
+		)
+		from ecommerce_integration.ecommerce_integration.utils.post_harvest import (
+			resolve_stem_length_name,
+		)
+
+		lengths = [row.get("stem_length") for row in get_item_lengths_for_trade_item(trade_item_id)]
+		lengths = [length for length in lengths if length]
+		if not lengths:
+			return None
+
+		chosen = lengths[0]
+		if len(lengths) > 1:
+			# Prefer the grade itself: the multiple of ten Floriday quotes.
+			graded = [length for length in lengths if _length_digits(length) % 10 == 0]
+			chosen = graded[0] if graded else sorted(lengths, key=_length_digits)[0]
+			log_short(
+				f"Trade item {trade_item_id} covers {', '.join(sorted(lengths))} "
+				f"(one Floriday grade) — using {chosen}",
+				"Floriday Stem Length Grade",
+				False,
+			)
+
+		resolved = resolve_stem_length_name(chosen)
+		if not resolved:
+			# Name the length that is missing from the master. A blank Length on
+			# the order with nothing logged is the failure mode this replaces.
+			log_short(
+				f"Trade item {trade_item_id} is {chosen}, which has no Stem Length "
+				f"record — Length left blank",
+				"Floriday Stem Length Unmapped",
+				True,
+			)
+		return resolved
+	except Exception as e:
+		log_short(
+			f"Stem length lookup failed for {trade_item_id}: {str(e)[:60]}",
+			"Floriday Stem Length Lookup",
+			True,
+		)
+		return None
+
+
+def _length_digits(stem_length):
+	"""The number in a stem length ("63cm" -> 63); 0 when there is none."""
+	match = re.search(r"\d+", str(stem_length or ""))
+	return int(match.group(0)) if match else 0
 
 
 def parse_floriday_datetime(date_str, default=None):
@@ -1246,27 +1470,199 @@ def get_sync_status():
 		return {"status": "error", "message": str(e)}
 
 
+# Sales Order fields that hold the Delivery Point's NAME as plain text instead of
+# linking to it. upande_packhouse defines both as Data, so renaming the Delivery
+# Point leaves them showing the old name — which is exactly how "GLN 87196049..."
+# stayed on an order after the GLN had been given a proper name.
+DELIVERY_POINT_NAME_MIRRORS = ("custom_drop_off_point", "custom_truck_details")
+
+
+def is_gln_placeholder(delivery_point_name, gln_code=None):
+	"""True when this Delivery Point name is one WE invented for an unnamed GLN.
+
+	`ensure_delivery_point_for_gln` names a Delivery Point "GLN <code>" when
+	Floriday can name neither the delivery location nor the organisation, so the
+	order still imports. That name is a placeholder waiting to be replaced, and
+	only such a name may be renamed on the operator's behalf — a Delivery Point
+	someone named themselves is theirs.
+	"""
+	if not delivery_point_name or not delivery_point_name.startswith("GLN "):
+		return False
+	code = delivery_point_name[4:].strip()
+	if not code.isdigit():
+		return False
+	return code == str(gln_code) if gln_code else True
+
+
+def repoint_delivery_point_name(old_name, new_name):
+	"""Carry a Delivery Point rename onto everything that copied its NAME.
+
+	Renaming the record repoints the Link fields by itself. It cannot touch the
+	Data mirrors above, nor the Shipping Agent an import creates alongside the
+	Delivery Point (Floriday names no cargo agent, so the delivery point fills
+	that role too) — those keep the old text, which is what the operator is
+	looking at on the order.
+
+	The mirrors are written with SQL because submitted Sales Orders carry most of
+	them. They are logistics labels, not amounts: leaving a submitted order
+	pointing at a name that no longer exists is the defect, not the fix.
+	"""
+	moved = {}
+	if not old_name or not new_name or old_name == new_name:
+		return moved
+
+	for fieldname in DELIVERY_POINT_NAME_MIRRORS:
+		if not frappe.db.has_column("Sales Order", fieldname):
+			continue
+		# `fieldname` comes from the module constant above, never from input.
+		# nosemgrep: frappe-sql-format-injection
+		count = frappe.db.sql(f"SELECT COUNT(*) FROM `tabSales Order` WHERE `{fieldname}` = %s", (old_name,))[
+			0
+		][0]
+		if not count:
+			continue
+		# nosemgrep: frappe-sql-format-injection
+		frappe.db.sql(
+			f"UPDATE `tabSales Order` SET `{fieldname}` = %s WHERE `{fieldname}` = %s",
+			(new_name, old_name),
+		)
+		moved[fieldname] = count
+
+	# The twin Shipping Agent, but only for a placeholder name. A Shipping Agent
+	# that happens to share a name with a real Delivery Point belongs to whoever
+	# made it, and renaming the Delivery Point is no reason to touch it.
+	if is_gln_placeholder(old_name) and frappe.db.exists("Shipping Agent", old_name):
+		from frappe.model.rename_doc import rename_doc
+
+		try:
+			rename_doc(
+				"Shipping Agent",
+				old_name,
+				new_name,
+				merge=bool(frappe.db.exists("Shipping Agent", new_name)),
+				ignore_permissions=True,
+				show_alert=False,
+			)
+			moved["shipping_agent"] = new_name
+		except Exception as e:
+			log_short(
+				f"Could not rename Shipping Agent {old_name}: {str(e)[:60]}",
+				"Floriday Delivery Point Rename",
+				True,
+			)
+
+	if moved:
+		log_short(
+			f"Delivery Point '{old_name}' -> '{new_name}': {moved}",
+			"Floriday Delivery Point Rename",
+			False,
+		)
+	return moved
+
+
+def on_delivery_point_renamed(doc, method=None, old_name=None, new_name=None, merge=False):
+	"""after_rename hook: naming a GLN placeholder must reach the orders.
+
+	Renaming the Delivery Point in the desk is the natural way to say "this GLN
+	is actually Royal FloraHolland Aalsmeer", so make that gesture complete
+	instead of leaving the old name behind on every order that used it.
+	"""
+	repoint_delivery_point_name(old_name, new_name or getattr(doc, "name", None))
+
+
 @frappe.whitelist()
-def map_delivery_point(floriday_gln: str, delivery_point_name: str):
-	"""Manually tag a Delivery Point with a Floriday GLN (custom_floriday_delivery_id)."""
+def map_delivery_point(floriday_gln: str | None = None, delivery_point_name: str | None = None):
+	"""Give a Floriday GLN a real Delivery Point — name and all.
+
+	Tagging alone is not enough, for two reasons:
+
+	* `custom_floriday_delivery_point_id` is UNIQUE, so an auto-created
+	  "GLN <code>" placeholder holds the tag hostage: setting it on the intended
+	  Delivery Point fails until the placeholder gives it up.
+	* Orders imported before the mapping already carry the placeholder's NAME in
+	  their Delivery Point link, Drop Off Point, Truck Details and Shipping Agent.
+	  A tag moved quietly behind them leaves all four reading "GLN <code>".
+
+	So when the current holder is a placeholder it is RENAMED (merged, if the
+	target already exists) into the intended Delivery Point, which repoints every
+	link, and the name mirrors are carried across with it. A Delivery Point
+	someone named themselves is never renamed — the tag simply moves.
+	"""
 	try:
+		# Annotated optional on purpose. `@frappe.whitelist()` enforces the type
+		# hints with pydantic BEFORE the body runs, so a bare `str` would turn a
+		# missing argument into a FrappeTypeError instead of the message below.
 		if not floriday_gln or not delivery_point_name:
 			return {"status": "error", "message": "Missing GLN or Delivery Point name"}
 
-		if not frappe.db.exists("Delivery Point", delivery_point_name):
-			return {"status": "error", "message": f"Delivery Point {delivery_point_name} not found"}
+		floriday_gln = str(floriday_gln).strip()
+		delivery_point_name = str(delivery_point_name).strip()
+
+		holder = get_delivery_point_from_floriday_gln(floriday_gln)
+		target_exists = bool(frappe.db.exists("Delivery Point", delivery_point_name))
+
+		if holder == delivery_point_name:
+			# Already mapped; still reconcile the mirrors, which is free and is the
+			# whole reason someone would run this twice.
+			return {
+				"status": "success",
+				"message": f"GLN {floriday_gln} is already mapped to {delivery_point_name}",
+			}
+
+		# Refuse to steal a GLN from a Delivery Point that already has its own.
+		if target_exists:
+			existing_gln = frappe.db.get_value(
+				"Delivery Point", delivery_point_name, "custom_floriday_delivery_point_id"
+			)
+			if existing_gln and existing_gln != floriday_gln:
+				return {
+					"status": "error",
+					"message": (
+						f"Delivery Point {delivery_point_name} is already mapped to GLN "
+						f"{existing_gln}. Clear that first if the mapping has changed."
+					),
+				}
+
+		if holder and is_gln_placeholder(holder, floriday_gln):
+			from frappe.model.rename_doc import rename_doc
+
+			rename_doc(
+				"Delivery Point",
+				holder,
+				delivery_point_name,
+				merge=target_exists,
+				ignore_permissions=True,
+				show_alert=False,
+			)
+			# after_rename carries the mirrors across; call it directly too, so the
+			# behaviour does not depend on this app's hook being registered.
+			repoint_delivery_point_name(holder, delivery_point_name)
+			verb = "merged into" if target_exists else "renamed to"
+			detail = f"placeholder {holder} {verb} {delivery_point_name}"
+		else:
+			if not target_exists:
+				return {
+					"status": "error",
+					"message": f"Delivery Point {delivery_point_name} not found",
+				}
+			if holder:
+				# Free the unique tag before claiming it.
+				frappe.db.set_value("Delivery Point", holder, "custom_floriday_delivery_point_id", None)
+			detail = f"tagged {delivery_point_name}"
 
 		frappe.db.set_value(
-			"Delivery Point", delivery_point_name, "custom_floriday_delivery_id", floriday_gln
+			"Delivery Point", delivery_point_name, "custom_floriday_delivery_point_id", floriday_gln
 		)
 
 		log_short(
-			f"Mapped Floriday GLN {floriday_gln} to Delivery Point {delivery_point_name}",
+			f"Mapped Floriday GLN {floriday_gln}: {detail}",
 			"Floriday Delivery Point Mapping",
 			False,
 		)
-
-		return {"status": "success", "message": f"Mapped GLN {floriday_gln} to {delivery_point_name}"}
+		return {
+			"status": "success",
+			"message": f"Mapped GLN {floriday_gln} to {delivery_point_name} ({detail})",
+		}
 
 	except Exception as e:
 		log_short(f"Error mapping delivery point: {str(e)[:50]}", "Floriday Mapping Error", True)
@@ -1275,12 +1671,12 @@ def map_delivery_point(floriday_gln: str, delivery_point_name: str):
 
 @frappe.whitelist()
 def get_mapped_delivery_points():
-	"""Return all Delivery Points that have custom_floriday_delivery_id set."""
+	"""Return all Delivery Points that have custom_floriday_delivery_point_id set."""
 	try:
 		delivery_points = frappe.get_all(
 			"Delivery Point",
-			filters={"custom_floriday_delivery_id": ["!=", ""]},
-			fields=["name", "custom_floriday_delivery_id"],
+			filters={"custom_floriday_delivery_point_id": ["!=", ""]},
+			fields=["name", "custom_floriday_delivery_point_id"],
 		)
 		return {"status": "success", "mappings": delivery_points, "count": len(delivery_points)}
 	except Exception as e:

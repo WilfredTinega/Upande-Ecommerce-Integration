@@ -14,9 +14,10 @@ use_json_request_body = True
 # ------------------
 
 # This app is self-contained: it declares no dependency on any other custom app.
-# It reads a few doctypes that upande_webshop also ships (Webshop Item Prices,
-# Stem Length Price, Delivery Point, ...) but only when they are present on the
-# site — every such read is guarded, so the app installs and runs standalone.
+# It reads a few doctypes the post-harvest suite ships (Shelf Item, Stem Length,
+# Customer pricing, ...) but only when they are present on the site — every such
+# read is guarded, so the app installs and runs standalone. It reads nothing at
+# all from upande_webshop.
 # required_apps = []
 
 # Each item in the list will be shown as an app in the apps page
@@ -121,7 +122,9 @@ after_migrate = "ecommerce_integration.setup.install.after_migrate"
 # Uninstallation
 # ------------
 
-# before_uninstall = "ecommerce_integration.uninstall.before_uninstall"
+# Custom Fields and runtime-created Scheduled Job Types are ordinary site records
+# that Frappe does NOT remove with the app, so they are cleaned up explicitly.
+before_uninstall = "ecommerce_integration.uninstall.before_uninstall"
 # after_uninstall = "ecommerce_integration.uninstall.after_uninstall"
 
 # Integration Setup
@@ -169,9 +172,23 @@ after_migrate = "ecommerce_integration.setup.install.after_migrate"
 # Hook on document methods and events
 
 doc_events = {
+	# Naming a GLN placeholder Delivery Point has to reach the orders that copied
+	# its name — Drop Off Point and Truck Details are Data fields upande_packhouse
+	# owns, so a rename leaves them showing the old "GLN <code>".
+	"Delivery Point": {
+		"after_rename": "ecommerce_integration.ecommerce_integration.doctype.floriday_settings.floriday_sales_order.on_delivery_point_renamed",
+	},
 	"Sales Order": {
+		# Submitting is the confirmation step for both channels: a Biflorica
+		# preorder is approved on Biflorica, and a Floriday order is fulfilled on
+		# Floriday. Biflorica's runs inline and blocks the submit if it is
+		# rejected (approval is the whole point of the submit); Floriday's is
+		# queued after commit, because fulfilling means paging Floriday's
+		# delivery orders and the submit must not hang on — or be rolled back
+		# by — a slow remote call.
 		"on_submit": [
 			"ecommerce_integration.ecommerce_integration.doctype.biflorica_setting.biflorica_setting.confirm_biflorica_predeal_on_submit",
+			"ecommerce_integration.ecommerce_integration.doctype.floriday_settings.floriday_order_fullfillment.fulfill_floriday_sales_order_on_submit",
 		],
 	},
 }

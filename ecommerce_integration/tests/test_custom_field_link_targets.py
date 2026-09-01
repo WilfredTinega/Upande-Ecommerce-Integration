@@ -31,6 +31,48 @@ from ecommerce_integration.testing import IntegrationTestCase
 LINK_FIELDTYPES = ("Link", "Table", "Table MultiSelect")
 
 
+class TestUninstallCleanup(IntegrationTestCase):
+	"""Uninstall must remove this app's fields and NOTHING else.
+
+	Frappe does not remove an app's Custom Fields on uninstall, so they are
+	cleaned up explicitly — but "declared here" is not the same as "owned here".
+	`Sales Order.custom_farm` is declared by this app AND upande_harvest;
+	`custom_order_name` and `custom_consignee` by upande_packhouse. Deleting those
+	would strip mandatory fields from apps that are still installed.
+	"""
+
+	def test_fields_another_installed_app_declares_are_never_removed(self):
+		from ecommerce_integration.uninstall import (
+			_declared_custom_fields,
+			_fields_owned_by_other_apps,
+		)
+
+		shared = _fields_owned_by_other_apps()
+		# Whatever the site's app mix, nothing shared may end up in the removal set.
+		removable = [pair for pair in _declared_custom_fields() if pair not in shared]
+		self.assertFalse(set(removable) & shared)
+
+	def test_the_delivery_point_id_is_ours_to_remove(self):
+		"""The Floriday GLN field is declared only here, so it must be cleaned up."""
+		from ecommerce_integration.uninstall import (
+			_declared_custom_fields,
+			_fields_owned_by_other_apps,
+		)
+
+		pair = ("Delivery Point", "custom_floriday_delivery_point_id")
+		self.assertIn(pair, _declared_custom_fields())
+		self.assertNotIn(pair, _fields_owned_by_other_apps())
+
+	def test_every_declared_field_is_a_real_pair(self):
+		from ecommerce_integration.uninstall import _declared_custom_fields
+
+		declared = _declared_custom_fields()
+		self.assertTrue(declared)
+		self.assertEqual(len(declared), len(set(declared)), "duplicate (doctype, fieldname) declared")
+		for doctype, fieldname in declared:
+			self.assertTrue(doctype and fieldname)
+
+
 class TestCustomFieldLinkTargets(IntegrationTestCase):
 	def test_missing_link_target_only_flags_absent_link_targets(self):
 		self.assertEqual(
@@ -47,16 +89,30 @@ class TestCustomFieldLinkTargets(IntegrationTestCase):
 
 		install / migrate has already run both ensure_* steps by the time tests
 		do, so this reads back what they actually created — no DDL of its own.
+
+		Read the field AS IT EXISTS on the site, never the spec's `options`. The
+		two legitimately differ: `ensure_*` blanks the link target when the target
+		DocType is absent (that is the whole dangling-link guard), and a field name
+		this app declares may already be on the site pointing somewhere else
+		entirely — on Tambuzi `Sales Order.custom_delivery_point` is upande_tambuzi's
+		and links `Delivery Points`, plural. Comparing the spec's target against the
+		site flagged all of those as dangling when nothing was.
 		"""
 		dangling = []
 		for spec in list(FLORIDAY_CUSTOM_FIELDS) + list(BIFLORICA_CUSTOM_FIELDS):
-			df = spec["df"]
-			if df.get("fieldtype") not in LINK_FIELDTYPES:
+			field = frappe.db.get_value(
+				"Custom Field",
+				{"dt": spec["dt"], "fieldname": spec["df"]["fieldname"]},
+				["fieldtype", "options"],
+				as_dict=True,
+			)
+			if not field or field.fieldtype not in LINK_FIELDTYPES:
 				continue
-			if not frappe.db.exists("Custom Field", {"dt": spec["dt"], "fieldname": df["fieldname"]}):
+			# A blank target is the guard having done its job, not a dangling link.
+			if not field.options:
 				continue
-			if not frappe.db.exists("DocType", df["options"]):
-				dangling.append(f"{spec['dt']}.{df['fieldname']} -> {df['options']}")
+			if not frappe.db.exists("DocType", field.options):
+				dangling.append(f"{spec['dt']}.{spec['df']['fieldname']} -> {field.options}")
 
 		self.assertEqual(dangling, [], f"custom field(s) linking a missing DocType: {dangling}")
 

@@ -1,42 +1,43 @@
 # Copyright (c) 2026, Upande LTD and contributors
 # For license information, please see license.txt
 
-"""Server side for the inline "enable stock → webshop" picker (shelf_move.js).
+"""Server side for the inline "enable stock for the channels" picker (shelf_move.js).
 
 The panel is rendered by this app on its own Floriday Settings / Biflorica
-Setting forms, so its endpoints live here. They were previously called on
-upande_webshop, which made the Stock tab dead ("App upande_webshop is not
-installed") on any site without that app.
+Setting forms, so its endpoints live here.
 
-Nothing here imports upande_webshop. The doctypes it owns — Shelf Item,
-Webshop Settings, Webshop Item Prices, Stem Length Price — are probed by name
-and every reader degrades to an empty list when they're absent, mirroring
-`webshop_stock.get_webshop_enabled_rows`. Publishing is the one action that
-genuinely needs those tables; without them it reports itself unavailable
-instead of raising.
+Enabling writes to `Ecommerce Enabled Stock`, a doctype THIS app owns, so the
+feature works on any site running this app alone. It used to write upande_webshop's
+`Webshop Item Prices` + `Stem Length Price` pair, which made the button a silent
+no-op wherever that app was absent.
+
+Rates are never written here. Availability is all this stores; the per-stem rate
+is resolved at read time from ERPNext `Item Price` and the post-harvest
+`Stem Length.price` master.
+
+`Shelf Item` is the one doctype read that this app does not own; it is probed by
+name and every reader degrades to an empty list when it is absent.
 """
 
 import json
-import re
 
 import frappe
 from frappe.utils import flt
 
+from ecommerce_integration.ecommerce_integration.utils import channel_setting
+from ecommerce_integration.ecommerce_integration.utils.enabled_stock import (
+	ENABLED_STOCK,
+	_stems_per_bunch_from_uom,
+)
+from ecommerce_integration.ecommerce_integration.utils.enabled_stock import (
+	get_enabled_stock_rows as _get_enabled_stock_rows,
+)
 from ecommerce_integration.ecommerce_integration.utils.stem_length import (
 	_normalize_stem_length,
 )
-from ecommerce_integration.ecommerce_integration.utils.webshop_stock import (
-	_stems_per_bunch_from_uom,
-)
-from ecommerce_integration.ecommerce_integration.utils.webshop_stock import (
-	get_webshop_enabled_rows as _get_webshop_enabled_rows,
-)
 
-# Doctypes owned by upande_webshop. Present on webshop sites, absent elsewhere.
+# Owned by the post-harvest suite; present on farm sites, absent elsewhere.
 SHELF_ITEM = "Shelf Item"
-WEBSHOP_SETTINGS = "Webshop Settings"
-WEBSHOP_ITEM_PRICES = "Webshop Item Prices"
-STEM_LENGTH_PRICE = "Stem Length Price"
 
 
 def _has_doctype(name):
@@ -53,13 +54,19 @@ def _bunch_size(sales_uom, stock_uom):
 
 
 def _canon_length(value):
-	"""Canonical "<n>cm" stem length, or "" when there's no number in `value`.
+	"""Canonical "<n>cm" stem length, or "" when `value` names no length.
 
-	Keys built with this line up with the published Stem Length Price rows."""
+	Keys built with this line up with the `Ecommerce Enabled Stock` rows.
+	Goes through the post-harvest master first: on farms where `Shelf
+	Item.stem_length` Links to `Stem Length`, the stored value is a docname and
+	may carry no digits at all."""
+	from ecommerce_integration.ecommerce_integration.utils.post_harvest import (
+		canonical_stem_length,
+	)
+
 	if value is None:
 		return ""
-	m = re.search(r"\d+", str(value))
-	return f"{int(m.group(0))}cm" if m else ""
+	return canonical_stem_length(value) or ""
 
 
 @frappe.whitelist()
@@ -95,15 +102,10 @@ def get_shelf_rows():
 def _configured_warehouses():
 	"""Warehouses the "warehouse" source of the picker should read.
 
-	Webshop Settings → Stock Balances when that doctype exists (same list the
-	storefront publishes from); otherwise this app's own settings, so the panel
-	still has a source on a site with no upande_webshop."""
-	if _has_doctype(WEBSHOP_SETTINGS):
-		settings = frappe.get_cached_doc(WEBSHOP_SETTINGS)
-		found = [row.warehouse for row in (settings.get("warehouses") or []) if row.warehouse]
-		if found:
-			return found
-
+	Taken from this app's own channel Singles only. It used to prefer
+	`Webshop Settings` → Stock Balances, but that Single belongs to
+	upande_webshop, and reading it on a site without that app queued
+	"DocType Webshop Settings not found" on every call."""
 	names = []
 	for doctype, fields in (
 		("Floriday Settings", ("stock_warehouse", "warehouse")),
@@ -112,7 +114,7 @@ def _configured_warehouses():
 		if not _has_doctype(doctype):
 			continue
 		for field in fields:
-			value = frappe.db.get_single_value(doctype, field)
+			value = channel_setting(field, doctype)
 			if value and value not in names:
 				names.append(value)
 	return names
@@ -199,9 +201,9 @@ def get_customer_warehouse_rows(warehouse: str):
 
 
 @frappe.whitelist()
-def get_webshop_enabled_rows():
-	"""Currently-published (item, length, qty) rows shown alongside the picker."""
-	return _get_webshop_enabled_rows()
+def get_enabled_stock_rows():
+	"""Currently-enabled (item, length, qty) rows shown alongside the picker."""
+	return _get_enabled_stock_rows()
 
 
 def available_qty_by_key():
@@ -216,78 +218,42 @@ def available_qty_by_key():
 	return out
 
 
-def _find_or_create_webshop_item_prices(item):
-	"""The item's Webshop Item Prices doc, created (and back-filled) as needed."""
-	existing = frappe.db.exists(WEBSHOP_ITEM_PRICES, {"item_code": item.item_code})
-	if not existing and frappe.db.exists(WEBSHOP_ITEM_PRICES, item.item_name):
-		existing = item.item_name
-	if existing:
-		doc = frappe.get_doc(WEBSHOP_ITEM_PRICES, existing)
-		updated = False
-		if not doc.item_code:
-			doc.item_code = item.item_code
-			updated = True
-		if not doc.item_group:
-			doc.item_group = item.item_group
-			updated = True
-		if updated:
-			doc.save()
-		return doc
-
-	doc = frappe.get_doc(
-		{
-			"doctype": WEBSHOP_ITEM_PRICES,
-			"item_code": item.item_code,
-			"item_name": item.item_name,
-			"item_group": item.item_group,
-		}
-	)
-	doc.insert()
-	return doc
-
-
-def _stem_length_price_row(wip_doc, stem_length):
-	"""The Stem Length Price child for `stem_length`, appended if absent.
+def _enabled_stock_name(item_code, stem_length):
+	"""The `Ecommerce Enabled Stock` row for one (item, length), or None.
 
 	Matched on the canonical "<n>cm" form so "52CM"/"52 cm"/"52cm" collapse to
-	one row, the same way rates and stock are stored elsewhere."""
-	canon = _normalize_stem_length(stem_length) or (stem_length or "").strip()
-	for row in wip_doc.stem_length_prices or []:
-		if _normalize_stem_length(row.stem_length) == canon or row.stem_length == canon:
-			return row
-	return wip_doc.append(
-		"stem_length_prices",
-		{"stem_length": canon, "rate": 0, "stock_qty": 0},
-	)
+	one row, the same way rates and stock are keyed everywhere else.
+	"""
+	canon = _canon_length(stem_length)
+	for row in frappe.get_all(
+		ENABLED_STOCK, filters={"item_code": item_code}, fields=["name", "stem_length"]
+	):
+		if _canon_length(row.stem_length) == canon:
+			return row.name
+	return None
 
 
 @frappe.whitelist()
-def set_webshop_enabled_stock(
+def set_enabled_stock(
 	items: str | list,
 	enabled: str | int | bool = 1,
 	source_warehouse: str | None = None,
 ):
-	"""Publish (or un-publish) per-length stock to the storefront. No stock move.
+	"""Enable (or disable) per-length stock for the sales channels. No stock move.
 
-	`items`: JSON list of {item_code, stem_length, qty}. Each entry's Webshop
-	Item Prices doc and Stem Length Price row are found/created, the row's
-	`enabled` flag is set, and (when enabling) `stock_qty` is set to `qty`.
+	`items`: JSON list of {item_code, stem_length, qty}. Each entry gets an
+	`Ecommerce Enabled Stock` row (created on first use), its `enabled` flag is
+	set, and when enabling `stock_qty` is set to `qty`.
 
-	The published qty is CAPPED at what's actually available for that
-	(item, length) — the server-side guard behind the panel's per-row max, so a
-	stale page or a direct API call can't over-publish. `source_warehouse` adds
-	that warehouse's Bin stock to the cap, for items that live only there.
+	The qty is CAPPED at what is actually available for that (item, length) — the
+	server-side guard behind the panel's per-row max, so a stale page or a direct
+	API call cannot over-offer. `source_warehouse` adds that warehouse's Bin stock
+	to the cap, for items that live only there.
 
-	Returns {updated, items, capped}; `unavailable` is set instead when the
-	storefront doctypes aren't installed on this site."""
-	if not (_has_doctype(WEBSHOP_ITEM_PRICES) and _has_doctype(STEM_LENGTH_PRICE)):
-		return {
-			"updated": 0,
-			"items": [],
-			"capped": 0,
-			"unavailable": "Webshop Item Prices is not available on this site, so stock cannot be published.",
-		}
-
+	Returns {updated, items, capped}. No rate is written: the per-stem price is
+	resolved at read time from `Item Price` and the post-harvest `Stem Length`
+	master.
+	"""
 	if isinstance(items, str):
 		items = json.loads(items or "[]")
 	enabled = 1 if str(enabled) not in ("0", "false", "False", "", "no") else 0
@@ -299,45 +265,41 @@ def set_webshop_enabled_stock(
 			key = (r.get("item_code"), _canon_length(r.get("stem_length")))
 			avail[key] = avail.get(key, 0.0) + flt(r.get("shelf_qty"))
 
-	# Group requested lengths per item so each doc is saved once.
-	by_item = {}
-	for entry in items or []:
-		item_code = (entry.get("item_code") or "").strip()
-		if not item_code:
-			continue
-		by_item.setdefault(item_code, []).append(
-			{
-				"stem_length": (entry.get("stem_length") or "").strip(),
-				"qty": flt(entry.get("qty")),
-			}
-		)
-
 	updated = 0
 	capped = 0
 	touched_items = []
-	for item_code, lengths in by_item.items():
-		item = frappe.db.get_value("Item", item_code, ["name", "item_name", "item_group"], as_dict=True)
-		if not item:
+	for entry in items or []:
+		item_code = (entry.get("item_code") or "").strip()
+		stem_length = (entry.get("stem_length") or "").strip()
+		if not (item_code and stem_length):
 			continue
-		item.item_code = item.name
-		wip_doc = _find_or_create_webshop_item_prices(item)
+		if not frappe.db.exists("Item", item_code):
+			continue
 
-		for entry in lengths:
-			row = _stem_length_price_row(wip_doc, entry["stem_length"])
-			row.enabled = enabled
-			if enabled:
-				qty = flt(entry["qty"])
-				available = flt(avail.get((item_code, _canon_length(entry["stem_length"]))))
-				if qty > available:
-					qty = available
-					capped += 1
-				row.stock_qty = qty
-			updated += 1
+		qty = flt(entry.get("qty"))
+		if enabled:
+			available = flt(avail.get((item_code, _canon_length(stem_length))))
+			if qty > available:
+				qty = available
+				capped += 1
 
-		wip_doc.save(ignore_permissions=True)
-		touched_items.append(item_code)
+		canon = _canon_length(stem_length) or stem_length
+		name = _enabled_stock_name(item_code, stem_length)
+		if name:
+			doc = frappe.get_doc(ENABLED_STOCK, name)
+		else:
+			doc = frappe.get_doc({"doctype": ENABLED_STOCK, "item_code": item_code, "stem_length": canon})
 
-	# Each WIP doc was saved in its own iteration above; commit so a failure
-	# in a later item cannot roll back stock already published.
+		doc.enabled = enabled
+		if enabled:
+			doc.stock_qty = qty
+		doc.save(ignore_permissions=True)
+
+		updated += 1
+		if item_code not in touched_items:
+			touched_items.append(item_code)
+
+	# Each row was saved in its own iteration above; commit so a failure on a
+	# later row cannot roll back what is already enabled.
 	frappe.db.commit()  # nosemgrep: frappe-manual-commit
 	return {"updated": updated, "items": touched_items, "capped": capped}

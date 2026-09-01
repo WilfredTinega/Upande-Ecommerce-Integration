@@ -20,11 +20,17 @@ def shelf_stock_enabled(settings_doctype):
 	"""True when `settings_doctype` (a Single) has use_shelf_stock on and Shelf exists.
 
 	Guarded by the `Shelf Item` doctype so sites without shelf support are safe.
+
+	Both the doctype and the field are checked rather than reading and catching:
+	a failed read queues "DocType <x> not found" / "Invalid fieldname" on
+	`frappe.message_log` before raising, and swallowing the exception leaves the
+	message behind to pop up as a dialog.
 	"""
-	try:
-		if not frappe.get_cached_value(settings_doctype, settings_doctype, "use_shelf_stock"):
-			return False
-	except Exception:
+	if not frappe.db.exists("DocType", settings_doctype):
+		return False
+	if not frappe.get_meta(settings_doctype).has_field("use_shelf_stock"):
+		return False
+	if not frappe.db.get_single_value(settings_doctype, "use_shelf_stock"):
 		return False
 	return bool(frappe.db.exists("DocType", "Shelf Item"))
 

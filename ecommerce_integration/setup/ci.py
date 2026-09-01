@@ -32,13 +32,55 @@ import frappe
 # "Business Unit" / "Consignee" / "Farm" are hard Link fields on Floriday
 # Settings and Biflorica Setting; the rest are targets of the custom fields this
 # app puts on Sales Order / Sales Order Item / Warehouse / Stock Entry Detail.
-STUB_DOCTYPES = (
+_TITLE_FIELD = [{"label": "Title", "fieldname": "title", "fieldtype": "Data"}]
+
+# Most stubs only need to exist so a Link resolves. Three carry real fields
+# because the code under test reads them: the post-harvest `Stem Length` master
+# is a price source, and `Shelf`/`Shelf Item` are the shelf stock source.
+STUB_DOCTYPES = {
+	"Business Unit": {"fields": _TITLE_FIELD},
+	"Consignee": {"fields": _TITLE_FIELD},
+	"Delivery Point": {"fields": _TITLE_FIELD},
+	"Farm": {"fields": _TITLE_FIELD},
+	"Packrate": {"fields": _TITLE_FIELD},
+	"Stem Length": {
+		"autoname": "field:length",
+		"fields": [
+			{"label": "Length", "fieldname": "length", "fieldtype": "Data", "unique": 1, "reqd": 1},
+			{"label": "Price", "fieldname": "price", "fieldtype": "Float"},
+			{"label": "Company", "fieldname": "company", "fieldtype": "Link", "options": "Company"},
+		],
+	},
+	"Shelf": {
+		"autoname": "field:shelf_id",
+		"fields": [
+			{"label": "Shelf ID", "fieldname": "shelf_id", "fieldtype": "Data", "unique": 1, "reqd": 1},
+			{"label": "Farm", "fieldname": "farm", "fieldtype": "Link", "options": "Farm"},
+			{"label": "Items", "fieldname": "items", "fieldtype": "Table", "options": "Shelf Item"},
+		],
+	},
+	"Shelf Item": {
+		"istable": 1,
+		"fields": [
+			{"label": "Variety", "fieldname": "variety", "fieldtype": "Link", "options": "Item"},
+			{"label": "Stem Length", "fieldname": "stem_length", "fieldtype": "Data"},
+			{"label": "Stem Qty", "fieldname": "stem_qty", "fieldtype": "Int"},
+			{"label": "Warehouse", "fieldname": "warehouse", "fieldtype": "Link", "options": "Warehouse"},
+			{"label": "Date Added", "fieldname": "date_added", "fieldtype": "Datetime"},
+		],
+	},
+}
+
+# `Shelf.items` links to `Shelf Item`, so the child has to exist first.
+_STUB_ORDER = (
 	"Business Unit",
 	"Consignee",
 	"Delivery Point",
 	"Farm",
 	"Packrate",
 	"Stem Length",
+	"Shelf Item",
+	"Shelf",
 )
 
 
@@ -47,25 +89,63 @@ def ensure_stub_doctypes():
 	the test runner can resolve the dependency without cloning a private repo.
 	Idempotent, and a no-op wherever the real DocType is installed."""
 	created = []
-	for name in STUB_DOCTYPES:
+	for name in _STUB_ORDER:
 		if frappe.db.exists("DocType", name):
 			continue
+		spec = STUB_DOCTYPES[name]
 		frappe.get_doc(
 			{
 				"doctype": "DocType",
 				"name": name,
 				"module": "Ecommerce Integration",
 				"custom": 1,
-				"autoname": "hash",
-				"fields": [{"label": "Title", "fieldname": "title", "fieldtype": "Data"}],
-				"permissions": [{"role": "System Manager", "read": 1, "write": 1, "create": 1, "delete": 1}],
+				"istable": spec.get("istable", 0),
+				"autoname": spec.get("autoname", "hash"),
+				"fields": spec["fields"],
+				"permissions": []
+				if spec.get("istable")
+				else [{"role": "System Manager", "read": 1, "write": 1, "create": 1, "delete": 1}],
 			}
 		).insert(ignore_permissions=True)
 		created.append(name)
 
+	# upande_webshop's CI helper runs FIRST and stubs "Stem Length" itself, with
+	# only a title field. The exists-check above then skips ours, leaving a
+	# doctype with no `length`/`price` — and every query filtering on those dies
+	# with "Unknown column 'length' in 'WHERE'". Top up whatever is missing so the
+	# stub matches a real farm site regardless of who created it.
+	topped_up = _ensure_stub_fields()
+
 	frappe.db.commit()  # nosemgrep: frappe-manual-commit
-	print(f"ensure_stub_doctypes: created={created}")
+	print(f"ensure_stub_doctypes: created={created} fields_added={topped_up}")
 	return created
+
+
+def _ensure_stub_fields():
+	"""Add any missing fields to stub DocTypes another app created first.
+
+	Only touches DocTypes flagged `custom` — a real installed app's schema is
+	never modified here.
+	"""
+	added = []
+	for name, spec in STUB_DOCTYPES.items():
+		if not frappe.db.exists("DocType", name):
+			continue
+		if not frappe.db.get_value("DocType", name, "custom"):
+			continue  # the real thing is installed; leave it alone
+
+		meta = frappe.get_meta(name)
+		missing = [f for f in spec["fields"] if not meta.has_field(f["fieldname"])]
+		if not missing:
+			continue
+
+		doc = frappe.get_doc("DocType", name)
+		for field in missing:
+			doc.append("fields", field)
+			added.append(f"{name}.{field['fieldname']}")
+		doc.save(ignore_permissions=True)
+		frappe.clear_cache(doctype=name)
+	return added
 
 
 def ensure_custom_fields():

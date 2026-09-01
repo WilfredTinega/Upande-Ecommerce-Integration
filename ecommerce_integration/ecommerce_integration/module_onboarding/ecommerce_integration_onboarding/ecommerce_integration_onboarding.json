@@ -1,0 +1,41 @@
+{
+ "allow_roles": [
+  {
+   "role": "Sales Manager"
+  },
+  {
+   "role": "Sales User"
+  }
+ ],
+ "creation": "2026-08-28 15:24:43.135894",
+ "docstatus": 0,
+ "doctype": "Module Onboarding",
+ "idx": 0,
+ "is_complete": 0,
+ "modified": "2026-08-28 16:21:21.878853",
+ "modified_by": "Administrator",
+ "module": "Ecommerce Integration",
+ "name": "Ecommerce Integration Onboarding",
+ "owner": "Administrator",
+ "steps": [
+  {
+   "step": "Connect Shopify"
+  },
+  {
+   "step": "Map Shopify Products"
+  },
+  {
+   "step": "Review Synced Shopify Orders"
+  },
+  {
+   "step": "Fulfil a Shopify Allocation"
+  },
+  {
+   "step": "Connect Floriday"
+  },
+  {
+   "step": "Connect Biflorica"
+  }
+ ],
+ "title": "Ecommerce Connectors Setup"
+}

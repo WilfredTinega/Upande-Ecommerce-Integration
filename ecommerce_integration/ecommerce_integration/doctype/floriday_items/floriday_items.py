@@ -68,6 +68,7 @@ from ecommerce_integration.ecommerce_integration.utils.stem_length import (
 	_normalize_stem_length,
 	_stem_length_rates_from_item_prices,
 	_stem_length_rates_from_variants,
+	resolve_stem_length_rates,
 )
 
 
@@ -80,8 +81,8 @@ class FloridayItems(Document):
 
 		if not price_list:
 			# Floriday Settings has no price_list field; resolve one (USD Price List
-			# → first enabled USD Selling list, with a Webshop Settings override if
-			# that app happens to be present).
+			# → first enabled USD Selling list, overridden by Floriday Settings >
+			# Price List when that is set).
 			from ecommerce_integration.ecommerce_integration.utils import _resolve_price_list
 
 			price_list = _resolve_price_list()
@@ -90,7 +91,13 @@ class FloridayItems(Document):
 		if has_variants:
 			latest_rate = _stem_length_rates_from_variants(self.item_code, price_list)
 		else:
-			latest_rate = _stem_length_rates_from_item_prices(self.item_code, price_list)
+			# Item Price rows first, then the post-harvest `Stem Length.price`
+			# master fills any length they do not cover.
+			latest_rate = resolve_stem_length_rates(
+				self.item_code, price_list=price_list, item_group=self.item_group
+			)
+			if not latest_rate:
+				latest_rate = _stem_length_rates_from_item_prices(self.item_code, price_list)
 
 		existing = {row.stem_length: row for row in self.table_ppvq if row.stem_length}
 
@@ -215,16 +222,16 @@ def _find_or_create_floriday_item(item):
 def get_item_mapping():
 	from ecommerce_integration.ecommerce_integration.utils import has_doctypes
 
-	if not has_doctypes("Floriday Items", "Stem Length Price"):
+	if not has_doctypes("Floriday Items", "Floriday Item Length"):
 		return {}
 
 	rows = frappe.db.sql(
 		"""
-		select fi.item_code, slp.trade_item_id, slp.stem_length
+		select fi.item_code, fil.trade_item_id, fil.stem_length
 		from `tabFloriday Items` fi
-		join `tabStem Length Price` slp on slp.parent = fi.name
-		where slp.parenttype = 'Floriday Items'
-		and ifnull(slp.trade_item_id, '') != ''
+		join `tabFloriday Item Length` fil on fil.parent = fi.name
+		where fil.parenttype = 'Floriday Items'
+		and ifnull(fil.trade_item_id, '') != ''
 		""",
 		as_dict=True,
 	)
@@ -240,21 +247,55 @@ def get_item_code_from_trade_item_id(trade_item_id):
 
 	if not trade_item_id:
 		return None
-	if not has_doctypes("Floriday Items", "Stem Length Price"):
+	if not has_doctypes("Floriday Items", "Floriday Item Length"):
 		return None
 	row = frappe.db.sql(
 		"""
 		select fi.item_code
 		from `tabFloriday Items` fi
-		join `tabStem Length Price` slp on slp.parent = fi.name
-		where slp.parenttype = 'Floriday Items'
-		and slp.trade_item_id = %s
+		join `tabFloriday Item Length` fil on fil.parent = fi.name
+		where fil.parenttype = 'Floriday Items'
+		and fil.trade_item_id = %s
 		limit 1
 		""",
 		(trade_item_id,),
 		as_dict=True,
 	)
 	return row[0].item_code if row else None
+
+
+def get_item_lengths_for_trade_item(trade_item_id):
+	"""[{item_code, stem_length}] — every mapping row for a Floriday trade item.
+
+	`Floriday Items` names the variety and the `Floriday Item Length` child names
+	the length, so the row that resolves an item code also carries the length;
+	reading only the code threw it away, which is why imported orders arrived
+	with a blank Length.
+
+	Plural on purpose. Floriday grades a stem length by rounding DOWN to the
+	nearest 10 (see `_floriday_length_for`), so one trade item covers a 10cm
+	band — on this bench six of them match two master lengths each, 60cm and
+	63cm sharing grade 60. A `limit 1` would silently pick whichever row the
+	database returned first.
+	"""
+	from ecommerce_integration.ecommerce_integration.utils import has_doctypes
+
+	if not trade_item_id:
+		return []
+	if not has_doctypes("Floriday Items", "Floriday Item Length"):
+		return []
+	return frappe.db.sql(
+		"""
+		select fi.item_code, fil.stem_length
+		from `tabFloriday Items` fi
+		join `tabFloriday Item Length` fil on fil.parent = fi.name
+		where fil.parenttype = 'Floriday Items'
+		and fil.trade_item_id = %s
+		order by fil.stem_length
+		""",
+		(trade_item_id,),
+		as_dict=True,
+	)
 
 
 @frappe.whitelist()

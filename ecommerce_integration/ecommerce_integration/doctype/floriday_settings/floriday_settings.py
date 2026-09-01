@@ -104,6 +104,7 @@ class FloridaySettings(Document):
 		client_id: DF.Data
 		client_secret: DF.Data
 		company: DF.Link | None
+		create_orders_as_quotation: DF.Check
 		customer: DF.Link | None
 		default_farm: DF.Link | None
 		fi_cron_format: DF.Data | None
@@ -145,6 +146,7 @@ class FloridaySettings(Document):
 		of_period: DF.Int
 		organization_supplier_id: DF.Data | None
 		period: DF.Int
+		price_list: DF.Link | None
 		publish_enabled_stock_only: DF.Check
 		sales_order_type: DF.Data | None
 		scope: DF.SmallText
@@ -529,18 +531,18 @@ def _get_floriday_item_index():
 	"""
 	from ecommerce_integration.ecommerce_integration.utils import has_doctypes
 
-	# `Stem Length Price` belongs to upande_webshop. Without it there are no
-	# trade-item mappings to index, so the Stock tab shows nothing rather than 500ing.
-	if not has_doctypes("Floriday Items", "Stem Length Price"):
+	# Without any trade-item mapping there is nothing to index, so the Stock tab
+	# shows nothing rather than 500ing.
+	if not has_doctypes("Floriday Items", "Floriday Item Length"):
 		return {}, {}
 
 	rows = frappe.db.sql(
 		"""
-		SELECT fi.item_code, fi.item_name, slp.stem_length, slp.trade_item_id
+		SELECT fi.item_code, fi.item_name, fil.stem_length, fil.trade_item_id
 		FROM `tabFloriday Items` fi
-		INNER JOIN `tabStem Length Price` slp ON slp.parent = fi.name
-		WHERE slp.parenttype = 'Floriday Items'
-		AND slp.trade_item_id IS NOT NULL AND slp.trade_item_id != ''
+		INNER JOIN `tabFloriday Item Length` fil ON fil.parent = fi.name
+		WHERE fil.parenttype = 'Floriday Items'
+		AND fil.trade_item_id IS NOT NULL AND fil.trade_item_id != ''
 		""",
 		as_dict=True,
 	)
@@ -665,8 +667,8 @@ def _floriday_flagged_qty_map(item_codes, warehouses):
 	align. Keys use _normalize_stem_length on both sides so "52cm"/"52"/"52 cm"
 	match the call site's normalized stem length.
 	"""
-	from ecommerce_integration.ecommerce_integration.doctype.floriday_items.floriday_items import (
-		_normalize_stem_length,
+	from ecommerce_integration.ecommerce_integration.utils.post_harvest import (
+		canonical_stem_length,
 	)
 	from ecommerce_integration.ecommerce_integration.utils.shelf_stock import (
 		get_shelf_qty_by_length,
@@ -691,7 +693,8 @@ def _floriday_flagged_qty_map(item_codes, warehouses):
 	for code in item_codes:
 		# {stem_length_name: total_stems} across all shelves for this item.
 		for stem_length_name, qty in get_shelf_qty_by_length(code).items():
-			key = (code, _normalize_stem_length(stem_length_name))
+			# Shelf rows Link to the stem-length master on some farms' builds.
+			key = (code, canonical_stem_length(stem_length_name))
 			qty_map[key] = qty_map.get(key, 0.0) + flt(qty)
 	return qty_map
 
@@ -850,7 +853,8 @@ def get_floriday_stock(warehouse: str | None = None):
 	qty AND a Floriday trade_item_id mapping are returned.
 	"""
 	if not warehouse:
-		warehouse = _get_settings_doc().warehouse
+		settings = _get_settings_doc()
+		warehouse = settings.warehouse or settings.stock_warehouse
 	if not warehouse:
 		return []
 	return _aggregate_floriday_stock([warehouse], apply_stock_source=True)
@@ -861,11 +865,11 @@ def get_floriday_batch_rows():
 	"""Batch rows derived from the items ENABLED on the Stock tab.
 
 	The Stock tab's Enable/Disable picker publishes rows by flipping
-	`Stem Length Price.enabled` (see shelf_move.js / set_webshop_enabled_stock).
+	`Ecommerce Enabled Stock.enabled` (see shelf_move.js / set_enabled_stock).
 	Those enabled rows — not the separate "Shelf Stock Items" picker — are the
 	source for batching: every enabled (item, stem length) that also has a
 	Floriday `trade_item_id` mapping is returned, with its published qty
-	(Stem Length Price.stock_qty) floored to a 200 multiple.
+	(Ecommerce Enabled Stock.stock_qty) floored to a 200 multiple.
 
 	Returns a list of {item_code, item_name, stem_length, trade_item_id, qty},
 	one per batchable enabled row (qty >= 200, mapping present). Rows without a
@@ -874,8 +878,8 @@ def get_floriday_batch_rows():
 	from ecommerce_integration.ecommerce_integration.doctype.floriday_items.floriday_items import (
 		_normalize_stem_length,
 	)
-	from ecommerce_integration.ecommerce_integration.utils.webshop_stock import (
-		get_webshop_enabled_rows,
+	from ecommerce_integration.ecommerce_integration.utils.enabled_stock import (
+		get_enabled_stock_rows,
 	)
 
 	BATCH_MULTIPLE = 200
@@ -892,7 +896,7 @@ def get_floriday_batch_rows():
 			mapping_by_norm[(code, _normalize_stem_length(m.stem_length))] = m
 
 	rows = []
-	for r in get_webshop_enabled_rows():
+	for r in get_enabled_stock_rows():
 		match = mapping_by_norm.get((r.get("item_code"), _normalize_stem_length(r.get("stem_length"))))
 		if not match:
 			continue  # enabled length not offered to Floriday — can't batch it
@@ -1098,16 +1102,16 @@ def get_item_floriday_meta(item_code: str):
 	from ecommerce_integration.ecommerce_integration.utils import has_doctypes
 
 	rows = []
-	if has_doctypes("Floriday Items", "Stem Length Price"):
+	if has_doctypes("Floriday Items", "Floriday Item Length"):
 		rows = frappe.db.sql(
 			"""
-			SELECT slp.stem_length, slp.trade_item_id
+			SELECT fil.stem_length, fil.trade_item_id
 			FROM `tabFloriday Items` fi
-			INNER JOIN `tabStem Length Price` slp ON slp.parent = fi.name
-			WHERE slp.parenttype = 'Floriday Items'
+			INNER JOIN `tabFloriday Item Length` fil ON fil.parent = fi.name
+			WHERE fil.parenttype = 'Floriday Items'
 			AND fi.item_code = %s
-			AND slp.trade_item_id IS NOT NULL AND slp.trade_item_id != ''
-			ORDER BY slp.stem_length
+			AND fil.trade_item_id IS NOT NULL AND fil.trade_item_id != ''
+			ORDER BY fil.stem_length
 			""",
 			(template,),
 			as_dict=True,
@@ -1252,6 +1256,70 @@ def _warehouse_label(w):
 	return f"(unnamed) GLN {gln}" if gln else "(unnamed)"
 
 
+def _floriday_environment(url):
+	"""'staging' or 'production' for a Floriday URL, else 'unknown'.
+
+	Floriday runs one host per environment — api.staging.floriday.io against
+	idm.staging.floriday.io, api.floriday.io against idm.floriday.io. A token
+	minted by one IDM is rejected by the other API with exactly the 401 an
+	expired token gives, so the two have to be compared when blaming credentials.
+	"""
+	host = (str(url or "").split("//")[-1].split("/")[0] or "").lower()
+	if not host:
+		return "unknown"
+	return "staging" if "staging" in host else "production"
+
+
+def _get_with_token_retry(doc, url, title="Floriday"):
+	"""GET `url`, refreshing the access token once on a 401/403 and retrying.
+
+	The desk calls these through `run_doc_method`, which posts the WHOLE document
+	from the browser — including whatever `access_token` was loaded when the form
+	was opened. Floriday tokens last an hour, so a form left open outlives its
+	token and sends a stale one back, producing "invalid-access-token" even though
+	the token stored on the site is fine. Refreshing re-reads and re-stores it, so
+	the retry uses the current one.
+	"""
+
+	def request(token):
+		headers = {
+			"Authorization": f"Bearer {token}",
+			"X-Api-Key": doc.api_key,
+			"Accept": "application/json",
+		}
+		try:
+			return requests.get(url, headers=headers, timeout=30)
+		except requests.RequestException as e:
+			frappe.log_error(message=str(e), title=f"{title} Exception")
+			frappe.throw(f"Floriday request failed: {e}")
+
+	# Prefer the token stored on the site over one posted in from the browser.
+	token = frappe.db.get_single_value("Floriday Settings", "access_token") or doc.access_token
+
+	response = request(token) if token else None
+	if response is not None and response.status_code not in (401, 403):
+		return response
+
+	try:
+		_refresh_access_token()
+	except Exception as e:
+		frappe.log_error(message=str(e), title=f"{title} Token Refresh Failed")
+		if response is not None:
+			return response
+		raise
+
+	fresh = frappe.db.get_single_value("Floriday Settings", "access_token")
+	doc.access_token = fresh
+	# The refresh SAVED the Single, so the caller's in-memory copy is now behind
+	# and its own save would fail with TimestampMismatchError. Carry the new
+	# timestamp across rather than reloading, which would discard whatever the
+	# caller is midway through building on this doc.
+	current_modified = frappe.db.get_single_value("Floriday Settings", "modified")
+	if current_modified:
+		doc.modified = current_modified
+	return request(fresh)
+
+
 def _fetch_floriday_warehouses(doc):
 	"""GET {base_url}/warehouses and replace the child table with the owned,
 	non-deleted warehouses. The first owned row's organization is mirrored
@@ -1262,22 +1330,12 @@ def _fetch_floriday_warehouses(doc):
 	warehouse X, and X comes back in the new response, X stays ticked.
 	"""
 	base_url = (doc.base_url or "").rstrip("/")
-	missing = [f for f in ("base_url", "api_key", "access_token") if not doc.get(f)]
+	missing = [f for f in ("base_url", "api_key") if not doc.get(f)]
 	if missing:
 		frappe.throw(_missing_fields_message(missing))
 
-	headers = {
-		"Authorization": f"Bearer {doc.access_token}",
-		"X-Api-Key": doc.api_key,
-		"Accept": "application/json",
-	}
-
 	url = f"{base_url}/warehouses"
-	try:
-		response = requests.get(url, headers=headers, timeout=30)
-	except requests.RequestException as e:
-		frappe.log_error(message=str(e), title="Floriday Fetch Warehouses Exception")
-		frappe.throw(f"Floriday warehouses request failed: {e}")
+	response = _get_with_token_retry(doc, url, title="Floriday Fetch Warehouses")
 
 	if response.status_code != 200:
 		frappe.log_error(
@@ -1287,7 +1345,13 @@ def _fetch_floriday_warehouses(doc):
 		body = (response.text or "").strip()[:300]
 		hint = ""
 		if response.status_code in (401, 403):
-			hint = " Check the API Key and access token on Floriday Settings — the gateway rejects the request before it reaches the warehouses endpoint."
+			hint = (
+				" The access token was refreshed and retried once and Floriday still"
+				" rejected it, so this is the credentials themselves — check API Key,"
+				" Client ID/Secret and Scope on Floriday Settings, and that Base URL"
+				f" and Token URL are the same environment ({_floriday_environment(doc.base_url)}"
+				f" vs {_floriday_environment(doc.token_url)})."
+			)
 		frappe.throw(f"Floriday returned HTTP {response.status_code}: {body}.{hint} See error log.")
 
 	payload = response.json() or []

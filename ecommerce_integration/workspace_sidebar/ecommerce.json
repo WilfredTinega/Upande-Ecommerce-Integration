@@ -75,6 +75,7 @@
  "modified": "2026-08-24 00:00:00.000000",
  "modified_by": "Administrator",
  "module": "Ecommerce Integration",
+ "module_onboarding": "Ecommerce Integration Onboarding",
  "name": "Ecommerce",
  "owner": "Administrator",
  "standard": 1,
