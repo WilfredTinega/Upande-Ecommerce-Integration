@@ -30,7 +30,7 @@ def has(*doctypes):
 def has_stem_length_master():
 	"""True when `Stem Length` exists AND can actually hold a length and a price.
 
-	CI stubs this doctype, and upande_webshop's helper gets there first with only
+	CI stubs this doctype, and a sibling app on the bench may get there first with only
 	a title field — so the doctype existing is not enough; querying `length` on
 	that stub raises "Unknown column 'length' in 'WHERE'".
 	"""
