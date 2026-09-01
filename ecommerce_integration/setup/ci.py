@@ -14,9 +14,11 @@ the whole reachable graph. Two things break that on a bare CI site:
      not installed here (and are not `required_apps`), so the walk reaches
      `make_test_records("Business Unit")` and dies with DoesNotExistError.
 
-(1) is already solved by upande_webshop's CI helper, which this app depends on.
-(2) is solved below with minimal custom stub DocTypes, the same way webshop
-stubs "Stem Length".
+Both are solved here, by this app alone. Nothing in this module imports another
+Upande app: `ecommerce_integration` declares no `required_apps` and reads no
+upande_webshop DocType, so its CI must not be bootstrapped by upande_webshop's
+helper either — a failure over there would surface as a red build here, and a
+change to its stubs would silently change what this app is tested against.
 """
 
 import frappe
@@ -32,6 +34,12 @@ import frappe
 # "Business Unit" / "Consignee" / "Farm" are hard Link fields on Floriday
 # Settings and Biflorica Setting; the rest are targets of the custom fields this
 # app puts on Sales Order / Sales Order Item / Warehouse / Stock Entry Detail.
+# ERPNext seeds these only through the setup wizard
+# (erpnext/setup/setup_wizard/operations/install_fixtures.py). Without the
+# wizard, creating a Company fails because its default "Goods In Transit"
+# warehouse links Warehouse Type "Transit".
+STANDARD_WAREHOUSE_TYPES = ("Transit",)
+
 _TITLE_FIELD = [{"label": "Title", "fieldname": "title", "fieldtype": "Data"}]
 
 # Most stubs only need to exist so a Link resolves. Three carry real fields
@@ -109,11 +117,11 @@ def ensure_stub_doctypes():
 		).insert(ignore_permissions=True)
 		created.append(name)
 
-	# upande_webshop's CI helper runs FIRST and stubs "Stem Length" itself, with
-	# only a title field. The exists-check above then skips ours, leaving a
-	# doctype with no `length`/`price` — and every query filtering on those dies
-	# with "Unknown column 'length' in 'WHERE'". Top up whatever is missing so the
-	# stub matches a real farm site regardless of who created it.
+	# Another app on the bench may have stubbed one of these first, with only a
+	# title field. The exists-check above then skips ours, leaving (for example) a
+	# "Stem Length" with no `length`/`price` — and every query filtering on those
+	# dies with "Unknown column 'length' in 'WHERE'". Top up whatever is missing so
+	# the stub matches a real farm site regardless of who created it.
 	topped_up = _ensure_stub_fields()
 
 	frappe.db.commit()  # nosemgrep: frappe-manual-commit
@@ -176,22 +184,67 @@ def ensure_custom_fields():
 	frappe.db.commit()  # nosemgrep: frappe-manual-commit
 
 
+def ensure_warehouse_types():
+	"""Create the Warehouse Types ERPNext's Company fixture needs.
+
+	The setup wizard normally creates these. On a bare `install-app` site it never
+	ran, so creating a Company fails on its default "Goods In Transit" warehouse:
+	"Could not find Warehouse Type: Transit". That surfaces later as every
+	ERPNext-derived test record failing at once, which says nothing about the
+	cause.
+	"""
+	created = []
+	for name in STANDARD_WAREHOUSE_TYPES:
+		if frappe.db.exists("Warehouse Type", name):
+			continue
+		frappe.get_doc({"doctype": "Warehouse Type", "name": name}).insert(
+			ignore_permissions=True, ignore_if_duplicate=True
+		)
+		created.append(name)
+
+	frappe.db.commit()  # nosemgrep: frappe-manual-commit
+	print(f"ensure_warehouse_types: created={created}, all={frappe.get_all('Warehouse Type', pluck='name')}")
+	return created
+
+
 def setup_test_site():
 	"""Prepare a freshly installed CI site for `bench run-tests`.
 
-	Order matters: the ERPNext/webshop baseline first (it completes the setup
-	wizard, which is what the Company test record needs), then our stubs, then
-	the custom fields that link to them.
+	Self-contained on purpose: this app depends on no other Upande app, so its
+	CI site is built entirely from this module. Order matters.
+
+	1. Warehouse Types first — ERPNext's own bootstrap creates a Company, and
+	   that fails without them.
+	2. The stub DocTypes, before the bootstrap, so any link the test-record walk
+	   follows already resolves.
+	3. ERPNext's `before_tests`, which completes the setup wizard (Company,
+	   fiscal year, currency exchange, ...).
+	4. Warehouse Types and stubs again — `before_tests` resets site state, and
+	   re-running both is idempotent and cheap.
+	5. This app's custom fields last, now that everything they Link to exists.
 	"""
-	# upande_webshop is a required_app of this app, so it is always installed
-	# here. Reusing its helper keeps the ERPNext test bootstrap in one place; it
-	# raises on failure, which is what we want — a swallowed failure here just
-	# resurfaces as a dozen confusing test-record errors.
-	from upande_webshop.setup.ci import setup_test_site as webshop_setup_test_site
+	try:
+		from erpnext.setup.utils import before_tests
+	except ImportError:
+		# v15 ships this; later ERPNext dropped it for a different test bootstrap.
+		# Say so instead of dying on the import — but say it loudly, because
+		# without the setup wizard there is no Company and half the test-record
+		# walk will fail for reasons that look nothing like this.
+		before_tests = None
 
-	print("setup_test_site: running upande_webshop setup_test_site ...")
-	webshop_setup_test_site()
-	print("setup_test_site: upande_webshop setup_test_site done")
+	ensure_warehouse_types()
+	ensure_stub_doctypes()
 
+	if before_tests:
+		print("setup_test_site: running erpnext before_tests ...")
+		before_tests()
+		print("setup_test_site: before_tests done")
+	else:
+		print(
+			"setup_test_site: WARNING - erpnext.setup.utils.before_tests is absent on this "
+			"ERPNext; the setup wizard has NOT run, so there is no Company fixture"
+		)
+
+	ensure_warehouse_types()
 	ensure_stub_doctypes()
 	ensure_custom_fields()

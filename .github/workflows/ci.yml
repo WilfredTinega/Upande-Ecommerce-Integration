@@ -21,7 +21,7 @@ concurrency:
 
 jobs:
   tests:
-    name: Install + Migrate (Frappe v15 · ERPNext · Payments · Upande Webshop)
+    name: Install + Migrate (Frappe v15 · ERPNext · Payments)
     runs-on: ubuntu-latest
     timeout-minutes: 60
 
@@ -83,8 +83,6 @@ jobs:
           FRAPPE_BRANCH: version-15
           ERPNEXT_BRANCH: version-15
           PAYMENTS_BRANCH: version-15
-          WEBSHOP_REPO: https://github.com/WilfredTinega/Upande-Webshop.git
-          WEBSHOP_BRANCH: main
 
       - name: Run app tests
         working-directory: /home/runner/frappe-bench
