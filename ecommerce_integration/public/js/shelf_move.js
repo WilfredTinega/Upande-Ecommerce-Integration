@@ -519,9 +519,7 @@ ecommerce_integration._set_selected_enabled = function ($root, frm, channel, fie
 		method: ecommerce_integration.SET_ENABLED_STOCK,
 		args: enable_args,
 		freeze: true,
-		freeze_message: enable
-			? __("Enabling stock for the channels…")
-			: __("Disabling stock…"),
+		freeze_message: enable ? __("Enabling stock for the channels…") : __("Disabling stock…"),
 		callback(r) {
 			$btns.prop("disabled", false);
 			const updated = (r.message && r.message.updated) || 0;

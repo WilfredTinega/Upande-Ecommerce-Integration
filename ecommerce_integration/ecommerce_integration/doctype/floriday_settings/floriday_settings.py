@@ -104,6 +104,7 @@ class FloridaySettings(Document):
 		client_id: DF.Data
 		client_secret: DF.Data
 		company: DF.Link | None
+		create_orders_as_quotation: DF.Check
 		customer: DF.Link | None
 		default_farm: DF.Link | None
 		fi_cron_format: DF.Data | None
@@ -145,6 +146,7 @@ class FloridaySettings(Document):
 		of_period: DF.Int
 		organization_supplier_id: DF.Data | None
 		period: DF.Int
+		price_list: DF.Link | None
 		publish_enabled_stock_only: DF.Check
 		sales_order_type: DF.Data | None
 		scope: DF.SmallText
@@ -851,7 +853,8 @@ def get_floriday_stock(warehouse: str | None = None):
 	qty AND a Floriday trade_item_id mapping are returned.
 	"""
 	if not warehouse:
-		warehouse = _get_settings_doc().warehouse
+		settings = _get_settings_doc()
+		warehouse = settings.warehouse or settings.stock_warehouse
 	if not warehouse:
 		return []
 	return _aggregate_floriday_stock([warehouse], apply_stock_source=True)
@@ -1253,6 +1256,70 @@ def _warehouse_label(w):
 	return f"(unnamed) GLN {gln}" if gln else "(unnamed)"
 
 
+def _floriday_environment(url):
+	"""'staging' or 'production' for a Floriday URL, else 'unknown'.
+
+	Floriday runs one host per environment — api.staging.floriday.io against
+	idm.staging.floriday.io, api.floriday.io against idm.floriday.io. A token
+	minted by one IDM is rejected by the other API with exactly the 401 an
+	expired token gives, so the two have to be compared when blaming credentials.
+	"""
+	host = (str(url or "").split("//")[-1].split("/")[0] or "").lower()
+	if not host:
+		return "unknown"
+	return "staging" if "staging" in host else "production"
+
+
+def _get_with_token_retry(doc, url, title="Floriday"):
+	"""GET `url`, refreshing the access token once on a 401/403 and retrying.
+
+	The desk calls these through `run_doc_method`, which posts the WHOLE document
+	from the browser — including whatever `access_token` was loaded when the form
+	was opened. Floriday tokens last an hour, so a form left open outlives its
+	token and sends a stale one back, producing "invalid-access-token" even though
+	the token stored on the site is fine. Refreshing re-reads and re-stores it, so
+	the retry uses the current one.
+	"""
+
+	def request(token):
+		headers = {
+			"Authorization": f"Bearer {token}",
+			"X-Api-Key": doc.api_key,
+			"Accept": "application/json",
+		}
+		try:
+			return requests.get(url, headers=headers, timeout=30)
+		except requests.RequestException as e:
+			frappe.log_error(message=str(e), title=f"{title} Exception")
+			frappe.throw(f"Floriday request failed: {e}")
+
+	# Prefer the token stored on the site over one posted in from the browser.
+	token = frappe.db.get_single_value("Floriday Settings", "access_token") or doc.access_token
+
+	response = request(token) if token else None
+	if response is not None and response.status_code not in (401, 403):
+		return response
+
+	try:
+		_refresh_access_token()
+	except Exception as e:
+		frappe.log_error(message=str(e), title=f"{title} Token Refresh Failed")
+		if response is not None:
+			return response
+		raise
+
+	fresh = frappe.db.get_single_value("Floriday Settings", "access_token")
+	doc.access_token = fresh
+	# The refresh SAVED the Single, so the caller's in-memory copy is now behind
+	# and its own save would fail with TimestampMismatchError. Carry the new
+	# timestamp across rather than reloading, which would discard whatever the
+	# caller is midway through building on this doc.
+	current_modified = frappe.db.get_single_value("Floriday Settings", "modified")
+	if current_modified:
+		doc.modified = current_modified
+	return request(fresh)
+
+
 def _fetch_floriday_warehouses(doc):
 	"""GET {base_url}/warehouses and replace the child table with the owned,
 	non-deleted warehouses. The first owned row's organization is mirrored
@@ -1263,22 +1330,12 @@ def _fetch_floriday_warehouses(doc):
 	warehouse X, and X comes back in the new response, X stays ticked.
 	"""
 	base_url = (doc.base_url or "").rstrip("/")
-	missing = [f for f in ("base_url", "api_key", "access_token") if not doc.get(f)]
+	missing = [f for f in ("base_url", "api_key") if not doc.get(f)]
 	if missing:
 		frappe.throw(_missing_fields_message(missing))
 
-	headers = {
-		"Authorization": f"Bearer {doc.access_token}",
-		"X-Api-Key": doc.api_key,
-		"Accept": "application/json",
-	}
-
 	url = f"{base_url}/warehouses"
-	try:
-		response = requests.get(url, headers=headers, timeout=30)
-	except requests.RequestException as e:
-		frappe.log_error(message=str(e), title="Floriday Fetch Warehouses Exception")
-		frappe.throw(f"Floriday warehouses request failed: {e}")
+	response = _get_with_token_retry(doc, url, title="Floriday Fetch Warehouses")
 
 	if response.status_code != 200:
 		frappe.log_error(
@@ -1288,7 +1345,13 @@ def _fetch_floriday_warehouses(doc):
 		body = (response.text or "").strip()[:300]
 		hint = ""
 		if response.status_code in (401, 403):
-			hint = " Check the API Key and access token on Floriday Settings — the gateway rejects the request before it reaches the warehouses endpoint."
+			hint = (
+				" The access token was refreshed and retried once and Floriday still"
+				" rejected it, so this is the credentials themselves — check API Key,"
+				" Client ID/Secret and Scope on Floriday Settings, and that Base URL"
+				f" and Token URL are the same environment ({_floriday_environment(doc.base_url)}"
+				f" vs {_floriday_environment(doc.token_url)})."
+			)
 		frappe.throw(f"Floriday returned HTTP {response.status_code}: {body}.{hint} See error log.")
 
 	payload = response.json() or []

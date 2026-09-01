@@ -113,6 +113,52 @@ def clear_stem_length_label_cache():
 	frappe.local._ei_stem_length_labels = None
 
 
+def stem_length_name_by_label():
+	"""{canonical length: docname} — the inverse of `stem_length_label_by_name`.
+
+	For writing a Link to `Stem Length` from a length that arrives as text
+	("60cm" off a Floriday trade item). Built from the same map, so it inherits
+	the request-scoped cache and the per-farm naming quirks.
+
+	Where several master records share a length, the first by docname wins;
+	picking deterministically matters more than which one, since duplicates in
+	the master are a data problem, not something to resolve by guessing here.
+	"""
+	inverse = {}
+	for name, label in sorted(stem_length_label_by_name().items()):
+		inverse.setdefault(label, name)
+	return inverse
+
+
+def resolve_stem_length_name(value):
+	"""The `Stem Length` docname for `value`, or None — EXACT match only.
+
+	Deliberately does no rounding. Biflorica posts sizes rounded to the nearest
+	ten and has to round back (see `_resolve_stem_length`); Floriday states the
+	real length, and this master genuinely holds 43cm and 63cm alongside 40cm and
+	60cm. Rounding here would file a 63cm order under 60cm — the same mistake
+	that once folded 83CM into 53CM.
+
+	Returns None rather than a near miss when the master has no such length: a
+	blank Link is a visible gap, a wrong one is not.
+	"""
+	if value in (None, ""):
+		return None
+	value = str(value).strip()
+	if not value:
+		return None
+	if _has_doctype(STEM_LENGTH):
+		# Take the name `exists` GIVES BACK, never the value passed in. MySQL
+		# collates case-insensitively, so "37CM" matches the record named "37cm" —
+		# returning the input would write "37CM" into a Link field and leave it
+		# pointing at nothing.
+		name = frappe.db.exists(STEM_LENGTH, value)
+		if name:
+			return name
+	canon = canonical_stem_length(value)
+	return stem_length_name_by_label().get(canon) if canon else None
+
+
 def canonical_stem_length(value):
 	"""Canonical "<n>cm" for `value`, resolving a master docname when it is one.
 

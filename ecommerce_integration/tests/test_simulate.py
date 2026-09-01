@@ -18,12 +18,17 @@ import frappe
 
 from ecommerce_integration.setup import simulate
 from ecommerce_integration.testing import IntegrationTestCase
-from ecommerce_integration.tests.fixtures import ensure_item, ensure_price_list, has
+from ecommerce_integration.tests.fixtures import (
+	ensure_item,
+	ensure_price_list,
+	has,
+	has_stem_length_master,
+)
 
 
 class TestStemLengthSelection(IntegrationTestCase):
 	def test_lengths_outside_the_master_are_rejected_not_forced(self):
-		if not has("Stem Length"):
+		if not has_stem_length_master():
 			self.skipTest("Stem Length (post-harvest master) is not installed on this site")
 
 		field = frappe.get_meta("Stem Length").get_field("length")
@@ -44,7 +49,7 @@ class TestStemLengthSelection(IntegrationTestCase):
 
 class TestSeeding(IntegrationTestCase):
 	def setUp(self):
-		if not has("Stem Length", "Shelf", "Shelf Item"):
+		if not (has_stem_length_master() and has("Shelf", "Shelf Item")):
 			self.skipTest("the post-harvest Stem Length / Shelf doctypes are not installed")
 		self.items = [
 			frappe._dict(
@@ -158,7 +163,7 @@ class TestSeeding(IntegrationTestCase):
 
 class TestSeedingIsLocal(IntegrationTestCase):
 	def test_seeding_never_calls_floriday_or_biflorica(self):
-		if not has("Stem Length", "Shelf", "Shelf Item"):
+		if not (has_stem_length_master() and has("Shelf", "Shelf Item")):
 			self.skipTest("the post-harvest Stem Length / Shelf doctypes are not installed")
 
 		ensure_item("_Test EI Local Seed Rose")

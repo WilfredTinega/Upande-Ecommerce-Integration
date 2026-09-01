@@ -37,6 +37,7 @@ from ecommerce_integration.tests.fixtures import (
 	ensure_shelf,
 	ensure_stem_length,
 	has,
+	has_stem_length_master,
 )
 
 SHELF_ID = "_TEST-EI-BIFLORICA-SHELF"
@@ -88,7 +89,7 @@ class TestBifloricaOfferSourcing(IntegrationTestCase):
 		self.assertEqual(offers[0]["actual_qty"], 300)
 
 	def test_enabled_stock_is_priced_from_the_post_harvest_chain(self):
-		if not has("Stem Length"):
+		if not has_stem_length_master():
 			self.skipTest("Stem Length (post-harvest master) is not installed on this site")
 		ensure_stem_length("50CM", price=0.25)
 		ensure_enabled_stock(self.item, [("50cm", 200, 1)])

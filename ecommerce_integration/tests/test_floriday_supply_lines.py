@@ -31,6 +31,7 @@ from ecommerce_integration.tests.fixtures import (
 	ensure_stem_length,
 	has,
 	has_per_length_item_prices,
+	has_stem_length_master,
 	master_stem_lengths,
 )
 
@@ -41,7 +42,7 @@ SUPPLY_LINE_MODULE = (
 
 class TestFloridaySupplyLinePricing(IntegrationTestCase):
 	def setUp(self):
-		if not has("Stem Length"):
+		if not has_stem_length_master():
 			self.skipTest("Stem Length (post-harvest master) is not installed on this site")
 		self.item = ensure_item("_Test EI Floriday Rose")
 		self.price_list = ensure_price_list()
@@ -90,6 +91,102 @@ class TestFloridaySupplyLinePricing(IntegrationTestCase):
 		doc.insert(ignore_permissions=True)
 
 		self.assertEqual(get_item_price_from_erpnext("_test-trade-item"), 1.75)
+
+
+class TestFloridayItemLengthMapping(IntegrationTestCase):
+	"""`Floriday Item Length` must carry the trade-item mapping behaviour.
+
+	This child doctype replaced upande_webshop's `Stem Length Price`, and the
+	replacement shipped as a bare Document — so the Trade Items sync died with
+	"'FloridayItemLength' object has no attribute 'refresh_trade_item_id'" for
+	every item. Behaviour that moves with a doctype needs a test, not just the
+	schema.
+	"""
+
+	def _row(self, stem_length):
+		row = frappe.new_doc("Floriday Item Length")
+		row.stem_length = stem_length
+		return row
+
+	def test_a_matching_name_and_length_sets_the_trade_item_id(self):
+		# Floriday grades lengths DOWN to the nearest 10, and matches on a
+		# punctuation-stripped lowercase name.
+		lookup = {("amazingmagic", 60): "trade-item-abc"}
+		row = self._row("65cm")
+		self.assertTrue(row.refresh_trade_item_id(lookup, item_name="Amazing Magic"))
+		self.assertEqual(row.trade_item_id, "trade-item-abc")
+
+	def test_an_unmatched_length_leaves_it_alone(self):
+		row = self._row("40cm")
+		self.assertFalse(row.refresh_trade_item_id({("amazingmagic", 60): "x"}, item_name="Amazing Magic"))
+		self.assertFalse(row.trade_item_id)
+
+	def test_a_row_without_a_stem_length_is_skipped(self):
+		row = self._row("")
+		self.assertFalse(row.refresh_trade_item_id({("amazingmagic", 60): "x"}, item_name="Amazing Magic"))
+
+	def test_no_item_name_is_skipped(self):
+		row = self._row("60cm")
+		self.assertFalse(row.refresh_trade_item_id({("amazingmagic", 60): "x"}))
+
+
+class TestFloridayBatchWarehouse(IntegrationTestCase):
+	"""A warehouse is only needed when the batch DERIVES stock from one.
+
+	The requirement used to be checked before the branch, so a Shelf Stock picker
+	batch — which supplies its own rows, and whose shelf rows are not
+	warehouse-scoped at all — was blocked by "Warehouse not configured" even
+	though it never reads a warehouse.
+	"""
+
+	def _warehouse(self, **fields):
+		from ecommerce_integration.ecommerce_integration.doctype.floriday_settings.floriday_batch import (
+			batch_source_warehouse,
+		)
+
+		return batch_source_warehouse(frappe._dict(fields))
+
+	def test_either_warehouse_field_counts(self):
+		self.assertEqual(self._warehouse(warehouse="A", stock_warehouse=None), "A")
+		# stock_warehouse alone used to be ignored, failing sites configured that way.
+		self.assertEqual(self._warehouse(warehouse=None, stock_warehouse="B"), "B")
+		self.assertEqual(self._warehouse(warehouse="A", stock_warehouse="B"), "A")
+
+	def test_neither_set_is_none_not_empty_string(self):
+		self.assertIsNone(self._warehouse(warehouse="", stock_warehouse=""))
+		self.assertIsNone(self._warehouse())
+
+
+class TestFloridayEnvironment(IntegrationTestCase):
+	"""Base URL and Token URL must be the same Floriday environment.
+
+	Floriday runs one host per environment — api.staging/idm.staging against
+	api/idm — and a token minted by one IDM is rejected by the other API with
+	exactly the 401 an expired token gives. The failure message names both so
+	credentials are not blamed for an environment mix-up.
+	"""
+
+	def test_staging_and_production_are_told_apart(self):
+		from ecommerce_integration.ecommerce_integration.doctype.floriday_settings.floriday_settings import (
+			_floriday_environment,
+		)
+
+		self.assertEqual(
+			_floriday_environment("https://api.staging.floriday.io/suppliers-api-2026v1/"), "staging"
+		)
+		self.assertEqual(
+			_floriday_environment("https://idm.staging.floriday.io/oauth2/x/v1/token"), "staging"
+		)
+		self.assertEqual(_floriday_environment("https://api.floriday.io/suppliers-api-2026v1/"), "production")
+		self.assertEqual(_floriday_environment("https://idm.floriday.io/oauth2/x/v1/token"), "production")
+
+	def test_a_missing_url_is_unknown_not_production(self):
+		from ecommerce_integration.ecommerce_integration.doctype.floriday_settings.floriday_settings import (
+			_floriday_environment,
+		)
+
+		for value in ("", None):
+			self.assertEqual(_floriday_environment(value), "unknown")
 
 
 class TestFloridayBatchFiltering(IntegrationTestCase):

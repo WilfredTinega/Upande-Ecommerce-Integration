@@ -109,9 +109,43 @@ def ensure_stub_doctypes():
 		).insert(ignore_permissions=True)
 		created.append(name)
 
+	# upande_webshop's CI helper runs FIRST and stubs "Stem Length" itself, with
+	# only a title field. The exists-check above then skips ours, leaving a
+	# doctype with no `length`/`price` — and every query filtering on those dies
+	# with "Unknown column 'length' in 'WHERE'". Top up whatever is missing so the
+	# stub matches a real farm site regardless of who created it.
+	topped_up = _ensure_stub_fields()
+
 	frappe.db.commit()  # nosemgrep: frappe-manual-commit
-	print(f"ensure_stub_doctypes: created={created}")
+	print(f"ensure_stub_doctypes: created={created} fields_added={topped_up}")
 	return created
+
+
+def _ensure_stub_fields():
+	"""Add any missing fields to stub DocTypes another app created first.
+
+	Only touches DocTypes flagged `custom` — a real installed app's schema is
+	never modified here.
+	"""
+	added = []
+	for name, spec in STUB_DOCTYPES.items():
+		if not frappe.db.exists("DocType", name):
+			continue
+		if not frappe.db.get_value("DocType", name, "custom"):
+			continue  # the real thing is installed; leave it alone
+
+		meta = frappe.get_meta(name)
+		missing = [f for f in spec["fields"] if not meta.has_field(f["fieldname"])]
+		if not missing:
+			continue
+
+		doc = frappe.get_doc("DocType", name)
+		for field in missing:
+			doc.append("fields", field)
+			added.append(f"{name}.{field['fieldname']}")
+		doc.save(ignore_permissions=True)
+		frappe.clear_cache(doctype=name)
+	return added
 
 
 def ensure_custom_fields():

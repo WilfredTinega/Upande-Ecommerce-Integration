@@ -1,7 +1,6 @@
 import json
 import math
 import uuid
-from datetime import datetime
 
 import frappe
 import requests
@@ -228,10 +227,16 @@ def update_delivery_note_with_fulfillment(sales_order_name, fulfillment_id):
 
 
 @frappe.whitelist()
-def order_fullment():
+def order_fullment(only_sales_order: str | None = None):
 	"""Create Floriday fulfillment orders (POST /fulfillment-orders) for Sales
 	Orders submitted within the last `of_period` hours (Floriday Settings;
-	defaults to 24h when unset)."""
+	defaults to 24h when unset).
+
+	`only_sales_order` narrows the run to a single Sales Order and drops the time
+	window with it — that is the path `fulfill_sales_order` (and so submit) takes,
+	where the order to fulfill is already known and may be older than the window
+	if an earlier attempt is being retried.
+	"""
 	logger = frappe.logger()
 
 	def step(msg):
@@ -296,8 +301,11 @@ def order_fullment():
 
 		has_so_gln = frappe.db.has_column("Sales Order", "custom_floriday_delivery_id")
 		gln_select = "so.custom_floriday_delivery_id" if has_so_gln else "NULL"
-		# `gln_select` is one of two hard-coded column expressions chosen above,
-		# never user input; start_time/customer are bound parameters.
+		# One named order, or the whole window. Both are hard-coded fragments
+		# chosen here; every value is a bound parameter.
+		scope_sql = "so.name = %(only_sales_order)s" if only_sales_order else "so.creation >= %(start_time)s"
+		# `gln_select` and `scope_sql` are hard-coded column/predicate expressions
+		# chosen above, never user input; the values are bound parameters.
 		# nosemgrep: frappe-sql-format-injection
 		sales_orders = frappe.db.sql(
 			f"""
@@ -307,23 +315,50 @@ def order_fullment():
             FROM `tabSales Order` so
             WHERE so.docstatus = 1
               AND so.po_no != ''
-              AND so.creation >= %(start_time)s
+              AND {scope_sql}
               AND so.customer = %(customer)s
             ORDER BY so.creation DESC
         """,
-			{"start_time": start_time, "customer": floriday_customer},
+			{
+				"start_time": start_time,
+				"customer": floriday_customer,
+				"only_sales_order": only_sales_order,
+			},
 			as_dict=True,
 		)
-		step(f"STEP 3: Orders in last {period_hours}h: {len(sales_orders)}")
+		if only_sales_order:
+			step(f"STEP 3: Targeting {only_sales_order}: {len(sales_orders)} match(es)")
+		else:
+			step(f"STEP 3: Orders in last {period_hours}h: {len(sales_orders)}")
 
 		if not sales_orders:
+			if only_sales_order:
+				# Named an order and got nothing back: say which of the three
+				# conditions it failed rather than "nothing to fulfill".
+				step(f"STEP 3: {only_sales_order} is not an eligible Floriday order")
+				return {
+					"status": "error",
+					"message": (
+						f"{only_sales_order} is not eligible for Floriday fulfillment — it must be "
+						f"submitted, carry the Floriday order id in po_no, and be booked under "
+						f"'{floriday_customer}' (the Customer on Floriday Settings)."
+					),
+					"results": [],
+					"summary": {
+						"total": 0,
+						"successful": 0,
+						"errors": 0,
+						"fulfilled_orders": [],
+						"failed_orders": [],
+					},
+				}
 			step(f"STEP 3: No orders in last {period_hours}h — nothing to fulfill")
 			return {
 				"status": "success",
 				"message": (
 					f"No Floriday Sales Orders found in the last {period_hours} hours. "
-					f"Tip: only orders submitted within the past {period_hours} hours, with a customer "
-					"tagged with custom_floriday_id, are eligible."
+					f"Tip: only orders submitted within the past {period_hours} hours, booked under "
+					f"'{floriday_customer}', are eligible."
 				),
 				"results": [],
 				"summary": {
@@ -355,6 +390,21 @@ def order_fullment():
 			try:
 				sales_order = frappe.get_doc("Sales Order", sales_order_name)
 				step(f"  STEP 4a: Loaded SO. items={len(sales_order.items)}")
+
+				already = sales_order.get("custom_floriday_fulfillment_order_id")
+				if already:
+					step(f"  STEP 4a SKIP: {sales_order_name} already fulfilled ({already})")
+					success_count += 1
+					results.append(
+						{
+							"sales_order": sales_order_name,
+							"floriday_order_id": floriday_order_id,
+							"fulfillment_id": already,
+							"status": "success",
+							"message": "Already fulfilled",
+						}
+					)
+					continue
 
 				if not sales_order.items:
 					step(f"  STEP 4b: No items in {sales_order_name} — skipping")
@@ -480,16 +530,14 @@ def order_fullment():
 					fulfillment_id = response_data.get("fulfillmentOrderId", new_fulfillment_order_id)
 					step(f"  STEP 4f SUCCESS: fulfillment_id={fulfillment_id}")
 
-					current_remarks = sales_order.get("remarks") or ""
-					sales_order.remarks = (
-						current_remarks
-						+ f"\n[Floriday Fulfillment Created: {fulfillment_id} at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}]"
-						+ f"\nTotal Stems: {total_stems}, Packages: {number_of_packages} (200 stems/package)"
-						+ f"\nDelivery GLN: {delivery_gln}"
-						+ f"\nFulfillment Request ID: {fulfillment_request_id}"
+					stamp_fulfillment_on_sales_order(
+						sales_order,
+						fulfillment_id,
+						total_stems=total_stems,
+						number_of_packages=number_of_packages,
+						delivery_gln=delivery_gln,
+						fulfillment_request_id=fulfillment_request_id,
 					)
-					sales_order.save(ignore_permissions=True)
-					frappe.db.commit()
 
 					update_delivery_note_with_fulfillment(sales_order_name, fulfillment_id)
 
@@ -571,6 +619,7 @@ def order_fullment():
 		return {
 			"status": "success",
 			"message": message,
+			"results": results,
 			"summary": {
 				"total": len(sales_orders),
 				"successful": success_count,
@@ -588,3 +637,186 @@ def order_fullment():
 			"Floriday Fulfillment Fatal Error",
 		)
 		return {"status": "error", "message": str(e)[:300]}
+
+
+def stamp_fulfillment_on_sales_order(
+	sales_order,
+	fulfillment_id,
+	total_stems=None,
+	number_of_packages=None,
+	delivery_gln=None,
+	fulfillment_request_id=None,
+):
+	"""Record the accepted fulfillment on the (submitted) Sales Order.
+
+	Written with `frappe.db.set_value`, not `doc.save()`: by the time a
+	fulfillment exists the Sales Order is submitted, and `remarks` is not an
+	allow-on-submit field — `.save()` would raise "Not allowed to change Remarks
+	after submission" *after* Floriday had already accepted the POST, turning a
+	successful fulfillment into a logged error.
+
+	`custom_floriday_fulfillment_order_id` is the durable record and the
+	idempotency key; the remarks line is the human-readable trail.
+	"""
+	updates = {}
+	if frappe.db.has_column("Sales Order", "custom_floriday_fulfillment_order_id"):
+		updates["custom_floriday_fulfillment_order_id"] = fulfillment_id
+
+	detail = [f"[Floriday Fulfillment Created: {fulfillment_id} at {now_datetime():%Y-%m-%d %H:%M:%S}]"]
+	if total_stems is not None:
+		detail.append(f"Total Stems: {total_stems}, Packages: {number_of_packages}")
+	if delivery_gln:
+		detail.append(f"Delivery GLN: {delivery_gln}")
+	if fulfillment_request_id:
+		detail.append(f"Fulfillment Request ID: {fulfillment_request_id}")
+	updates["remarks"] = ((sales_order.get("remarks") or "") + "\n" + "\n".join(detail)).strip()
+
+	frappe.db.set_value("Sales Order", sales_order.name, updates, update_modified=False)
+	for field, value in updates.items():
+		sales_order.set(field, value)
+
+	frappe.db.commit()  # nosemgrep: frappe-manual-commit
+
+	update_delivery_note_with_fulfillment(sales_order.name, fulfillment_id)
+
+
+def is_floriday_sales_order(doc):
+	"""True when this Sales Order was imported from Floriday.
+
+	Two signals together, because either alone gives false positives: the
+	customer must be the one Floriday Settings books every order under, AND
+	`po_no` must be a Floriday salesOrderId, which is a UUID. A manually raised
+	order for the same customer carries a human purchase-order number, so it is
+	not mistaken for one of ours and never posted to Floriday.
+	"""
+	if getattr(doc, "doctype", None) != "Sales Order":
+		return False
+
+	po_no = (doc.get("po_no") or "").strip()
+	if not po_no:
+		return False
+	try:
+		uuid.UUID(po_no)
+	except (ValueError, AttributeError, TypeError):
+		return False
+
+	if not frappe.db.exists("DocType", "Floriday Settings"):
+		return False
+	customer = frappe.db.get_single_value("Floriday Settings", "customer")
+	return bool(customer) and doc.get("customer") == customer
+
+
+@frappe.whitelist()
+def fulfill_sales_order(sales_order: str):
+	"""Create the Floriday fulfillment order for ONE Sales Order.
+
+	The single-order path behind submit; `order_fullment` remains the bulk
+	catch-up over a time window. Returns the same per-order result dict that the
+	bulk run collects, so both report failures the same way.
+	"""
+	if not frappe.db.exists("Sales Order", sales_order):
+		return {"sales_order": sales_order, "status": "error", "message": "Sales Order not found"}
+
+	doc = frappe.get_doc("Sales Order", sales_order)
+	if doc.docstatus != 1:
+		return {
+			"sales_order": sales_order,
+			"status": "error",
+			"message": "Sales Order is not submitted",
+		}
+
+	already = doc.get("custom_floriday_fulfillment_order_id")
+	if already:
+		return {
+			"sales_order": sales_order,
+			"status": "success",
+			"fulfillment_id": already,
+			"message": "Already fulfilled",
+		}
+
+	# order_fullment() looks back over a window and filters to Floriday's
+	# customer; targeting one order is the same work with the window set to just
+	# this document, so reuse it rather than keeping a second copy of the payload
+	# builder that could drift from it.
+	result = order_fullment(only_sales_order=sales_order)
+	if result.get("status") == "error":
+		return {"sales_order": sales_order, "status": "error", "message": result.get("message")}
+
+	for row in result.get("results") or []:
+		if row.get("sales_order") == sales_order:
+			return row
+
+	return {
+		"sales_order": sales_order,
+		"status": "error",
+		"message": result.get("message") or "Floriday returned no result for this order",
+	}
+
+
+def fulfill_floriday_sales_order_on_submit(doc, method=None):
+	"""Submitting a Floriday Sales Order fulfills it on Floriday.
+
+	Queued rather than run inline. Fulfilling needs the delivery order Floriday
+	built for the sales order, which means paging `/delivery-orders/sync` — an
+	unbounded number of 40s HTTP calls. Doing that inside `on_submit` would hang
+	the submit behind Floriday's latency, and any exception escaping the hook
+	would roll the submit back: the operator's order would silently fail to
+	submit because a remote API was slow. So the submit commits first
+	(`enqueue_after_commit`) and the fulfillment follows it.
+
+	Failures are not swallowed — `_fulfill_queued` writes the reason onto the
+	Sales Order's own timeline, where the person who submitted it will see it.
+	"""
+	if not is_floriday_sales_order(doc):
+		return
+	if doc.get("custom_floriday_fulfillment_order_id"):
+		return
+
+	frappe.enqueue(
+		"ecommerce_integration.ecommerce_integration.doctype.floriday_settings."
+		"floriday_order_fullfillment._fulfill_queued",
+		queue="short",
+		timeout=1500,
+		enqueue_after_commit=True,
+		sales_order=doc.name,
+	)
+	frappe.msgprint(
+		frappe._("Fulfilling {0} on Floriday…").format(doc.name),
+		alert=True,
+		indicator="blue",
+	)
+
+
+def _fulfill_queued(sales_order):
+	"""Background half of `fulfill_floriday_sales_order_on_submit`.
+
+	Whatever happens is written to the Sales Order's timeline. A fulfillment that
+	quietly does nothing is worse than one that fails loudly: the operator
+	submitted the order believing that fulfilled it, and only the document itself
+	is somewhere they will look.
+	"""
+	try:
+		result = fulfill_sales_order(sales_order)
+	except Exception as e:
+		frappe.log_error(
+			title=f"Floriday Fulfillment on Submit - {sales_order}",
+			message=frappe.get_traceback(),
+		)
+		result = {"status": "error", "message": str(e)[:300]}
+
+	if result.get("status") == "success":
+		comment = frappe._("Fulfilled on Floriday (fulfillment order {0}).").format(
+			result.get("fulfillment_id") or "?"
+		)
+	else:
+		comment = frappe._("Could not fulfill on Floriday: {0}").format(
+			result.get("message") or "unknown error"
+		)
+
+	try:
+		frappe.get_doc("Sales Order", sales_order).add_comment("Comment", comment)
+		frappe.db.commit()  # nosemgrep: frappe-manual-commit
+	except Exception:
+		safe_log(f"{sales_order}: {comment}", "Floriday Fulfillment", "warning")
+
+	return result

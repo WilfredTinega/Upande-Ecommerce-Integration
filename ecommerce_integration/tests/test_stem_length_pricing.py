@@ -35,6 +35,7 @@ from ecommerce_integration.tests.fixtures import (
 	ensure_stem_length,
 	has,
 	has_per_length_item_prices,
+	has_stem_length_master,
 	master_stem_lengths,
 )
 
@@ -52,7 +53,7 @@ class TestStemLengthNormalisation(IntegrationTestCase):
 
 class TestPostHarvestMaster(IntegrationTestCase):
 	def setUp(self):
-		if not has("Stem Length"):
+		if not has_stem_length_master():
 			self.skipTest("Stem Length (post-harvest master) is not installed on this site")
 		self.short, self.long = master_stem_lengths(2)
 
@@ -84,7 +85,7 @@ class TestCustomerPricingRates(IntegrationTestCase):
 
 class TestResolveStemLengthRates(IntegrationTestCase):
 	def setUp(self):
-		if not has("Stem Length"):
+		if not has_stem_length_master():
 			self.skipTest("Stem Length (post-harvest master) is not installed on this site")
 		self.item = ensure_item("_Test EI Rose")
 		self.price_list = ensure_price_list()
@@ -142,7 +143,7 @@ class TestResolveStemLengthRates(IntegrationTestCase):
 
 class TestResolveSingleRate(IntegrationTestCase):
 	def setUp(self):
-		if not has("Stem Length"):
+		if not has_stem_length_master():
 			self.skipTest("Stem Length (post-harvest master) is not installed on this site")
 		self.item = ensure_item("_Test EI Single Length Rose")
 		self.price_list = ensure_price_list()

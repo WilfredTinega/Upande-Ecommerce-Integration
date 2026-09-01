@@ -8,6 +8,17 @@ import requests
 from frappe import _
 
 
+def batch_source_warehouse(settings):
+	"""The ERPNext warehouse a warehouse-derived batch reads stock from.
+
+	Either field counts: `warehouse` and `stock_warehouse` are both Link Warehouse
+	on this Single and different parts of the app read different ones
+	(stock_picker probes stock_warehouse first). Reading only `warehouse` made
+	batch creation fail on a site that had configured the other.
+	"""
+	return (getattr(settings, "warehouse", None) or getattr(settings, "stock_warehouse", None)) or None
+
+
 @frappe.whitelist()
 def create_batches_on_floriday(selected_rows: str | list | None = None):
 	"""
@@ -36,10 +47,7 @@ def create_batches_on_floriday(selected_rows: str | list | None = None):
 	SUPPLIER_ORG_ID = settings.organization_supplier_id
 	ACCESS_TOKEN = settings.access_token
 
-	SOURCE_WAREHOUSE = settings.warehouse
-
-	if not SOURCE_WAREHOUSE:
-		frappe.throw(_("Warehouse not configured in Floriday Settings"))
+	SOURCE_WAREHOUSE = batch_source_warehouse(settings)
 
 	if selected_rows is not None:
 		if isinstance(selected_rows, str):
@@ -61,6 +69,19 @@ def create_batches_on_floriday(selected_rows: str | list | None = None):
 		from ecommerce_integration.ecommerce_integration.doctype.floriday_settings.floriday_settings import (
 			get_floriday_stock,
 		)
+
+		# Only THIS branch derives stock from a warehouse. The shelf picker above
+		# supplies its own rows (and shelf rows are not warehouse-scoped at all),
+		# so demanding a warehouse before the branch blocked batches that never
+		# needed one.
+		if not SOURCE_WAREHOUSE:
+			frappe.throw(
+				_(
+					"No source warehouse set on Floriday Settings — fill in Warehouse "
+					"(or Stock Warehouse), or create the batch from the Shelf Stock "
+					"picker, which supplies its own rows."
+				)
+			)
 
 		stock_rows = get_floriday_stock(SOURCE_WAREHOUSE)
 		if not stock_rows:

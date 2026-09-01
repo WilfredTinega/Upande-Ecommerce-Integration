@@ -24,7 +24,9 @@
   "stock_cron_format",
   "column_break_stck",
   "stock_enabled",
+  "column_break_kwnj",
   "use_shelf_stock",
+  "column_break_qlbg",
   "publish_enabled_stock_only",
   "stock_source_section",
   "shelf_stock_actions",
@@ -66,10 +68,13 @@
   "supplyline_next_run",
   "sales_order_tab",
   "so_event_frequency",
+  "column_break_fxtj",
   "so_cron_format",
   "column_break_iqki",
   "so_enabled",
+  "column_break_prlw",
   "sales_order",
+  "column_break_qhfg",
   "period",
   "so_scheduler_section",
   "so_last_run",
@@ -111,13 +116,15 @@
   "settings_tab",
   "order_pricing_section",
   "price_list",
-  "column_break_pricing",
+  "column_break_rioo",
   "create_orders_as_quotation",
-  "column_break_jwll",
+  "column_break_pricing",
   "at_event_frequency",
+  "column_break_jwll",
   "at_cron_format",
   "column_break_rebh",
   "at_enabled",
+  "column_break_ezfz",
   "update_access_token",
   "at_scheduler_section",
   "at_last_run",
@@ -707,21 +714,16 @@
    "fieldname": "price_list",
    "fieldtype": "Link",
    "label": "Price List",
-   "options": "Price List",
-   "description": "Selling price list the per-stem rates are read from. Falls back to \"USD Price List\", then the first enabled USD selling list."
+   "options": "Price List"
+  },
+  {
+   "default": "0",
+   "fieldname": "create_orders_as_quotation",
+   "fieldtype": "Check",
+   "label": "Create Orders as Quotation"
   },
   {
    "fieldname": "column_break_pricing",
-   "fieldtype": "Column Break"
-  },
-  {
-   "fieldname": "create_orders_as_quotation",
-   "fieldtype": "Check",
-   "label": "Create Orders as Quotation",
-   "description": "Keep incoming orders as draft Quotations instead of submitting Sales Orders directly."
-  },
-  {
-   "fieldname": "column_break_jwll",
    "fieldtype": "Column Break"
   },
   {
@@ -729,6 +731,10 @@
    "fieldtype": "Select",
    "label": "Event Frequency",
    "options": "All\nHourly\nDaily\nWeekly\nMonthly\nYearly\nHourly Long\nDaily Long\nWeekly Long\nMonthly Long\nCron"
+  },
+  {
+   "fieldname": "column_break_jwll",
+   "fieldtype": "Column Break"
   },
   {
    "depends_on": "eval:doc.at_event_frequency == \"Cron\"",
@@ -745,6 +751,10 @@
    "fieldname": "at_enabled",
    "fieldtype": "Check",
    "label": "Enabled"
+  },
+  {
+   "fieldname": "column_break_ezfz",
+   "fieldtype": "Column Break"
   },
   {
    "fieldname": "update_access_token",
@@ -819,13 +829,37 @@
    "fieldname": "changelog_html",
    "fieldtype": "HTML",
    "label": "Changelog"
+  },
+  {
+   "fieldname": "column_break_rioo",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "column_break_kwnj",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "column_break_qlbg",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "column_break_fxtj",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "column_break_prlw",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "column_break_qhfg",
+   "fieldtype": "Column Break"
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "issingle": 1,
  "links": [],
- "modified": "2026-08-24 18:20:29.676897",
+ "modified": "2026-09-01 21:18:56.786322",
  "modified_by": "Administrator",
  "module": "Ecommerce Integration",
  "name": "Floriday Settings",

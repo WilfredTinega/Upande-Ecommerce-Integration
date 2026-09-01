@@ -86,13 +86,14 @@ class BifloricaSetting(Document):
 	from typing import TYPE_CHECKING
 
 	if TYPE_CHECKING:
+		from frappe.types import DF
+
 		from ecommerce_integration.ecommerce_integration.doctype.biflorica_offer_view.biflorica_offer_view import (
 			BifloricaOfferView,
 		)
 		from ecommerce_integration.ecommerce_integration.doctype.biflorica_stock_view.biflorica_stock_view import (
 			BifloricaStockView,
 		)
-		from frappe.types import DF
 
 		access_token: DF.LongText | None
 		at_cron_format: DF.Data | None
@@ -452,7 +453,8 @@ def _read_api_password(settings) -> tuple[str, bool]:
 		return password, False
 
 	leaked = len(frappe.message_log or []) - log_length
-	for _ in range(max(leaked, 0)):
+	# `_` is the translation helper in this module, so name the throwaway.
+	for _leaked_message in range(max(leaked, 0)):
 		frappe.clear_last_message()
 
 	return "", leaked > 0

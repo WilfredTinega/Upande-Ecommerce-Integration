@@ -29,6 +29,23 @@ FLORIDAY_CUSTOM_FIELDS = [
 	{
 		"dt": "Sales Order",
 		"df": {
+			# Stamped once the fulfillment order is accepted by Floriday, and read
+			# back as the "already fulfilled" guard so a resubmit or a rerun of the
+			# bulk job never posts a second fulfillment for the same order.
+			"fieldname": "custom_floriday_fulfillment_order_id",
+			"label": "Floriday Fulfillment Order ID",
+			"fieldtype": "Data",
+			"read_only": 1,
+			"no_copy": 1,
+			# Written after the Sales Order is submitted, so it has to be writable
+			# on a submitted document.
+			"allow_on_submit": 1,
+			"insert_after": "custom_floriday_delivery_id",
+		},
+	},
+	{
+		"dt": "Sales Order",
+		"df": {
 			"fieldname": "custom_sales_order_type",
 			"label": "Sales Order Type",
 			"fieldtype": "Select",
@@ -103,11 +120,15 @@ FLORIDAY_CUSTOM_FIELDS = [
 		},
 	},
 	{
+		# The Floriday GLN of this drop-off point. Each Delivery Point carries the
+		# id it maps to, so an order for that GLN reuses the same record instead of
+		# creating another one.
 		"dt": "Delivery Point",
 		"df": {
-			"fieldname": "custom_floriday_delivery_id",
-			"label": "Floriday Delivery ID (GLN)",
+			"fieldname": "custom_floriday_delivery_point_id",
+			"label": "Floriday Delivery Point ID",
 			"fieldtype": "Data",
+			"unique": 1,
 			"insert_after": "delivery_point",
 		},
 	},
@@ -117,7 +138,7 @@ FLORIDAY_CUSTOM_FIELDS = [
 			"fieldname": "custom_delivery_address",
 			"label": "Delivery Address",
 			"fieldtype": "Data",
-			"insert_after": "custom_floriday_delivery_id",
+			"insert_after": "custom_floriday_delivery_point_id",
 		},
 	},
 	{

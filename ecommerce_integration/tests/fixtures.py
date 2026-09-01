@@ -27,6 +27,19 @@ def has(*doctypes):
 	return all(frappe.db.exists("DocType", doctype) for doctype in doctypes)
 
 
+def has_stem_length_master():
+	"""True when `Stem Length` exists AND can actually hold a length and a price.
+
+	CI stubs this doctype, and upande_webshop's helper gets there first with only
+	a title field — so the doctype existing is not enough; querying `length` on
+	that stub raises "Unknown column 'length' in 'WHERE'".
+	"""
+	if not has("Stem Length"):
+		return False
+	meta = frappe.get_meta("Stem Length")
+	return meta.has_field("length") and meta.has_field("price")
+
+
 def ensure_item(item_code, item_group=TEST_ITEM_GROUP, stock_uom="Nos"):
 	if frappe.db.exists("Item", item_code):
 		return item_code
@@ -138,7 +151,7 @@ def ensure_shelf(shelf_id, rows):
 	price they did not ask for would quietly satisfy the pricing tests.
 	"""
 	master = {}
-	if has("Stem Length"):
+	if has_stem_length_master():
 		for _item_code, stem_length, _qty in rows:
 			master[stem_length] = ensure_stem_length(stem_length)
 

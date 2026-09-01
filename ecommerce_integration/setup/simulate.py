@@ -116,6 +116,11 @@ def ensure_stem_length_master(lengths, base_rate=DEFAULT_BASE_RATE, step=DEFAULT
 		return {}, "Stem Length is not installed on this site"
 
 	meta = frappe.get_meta("Stem Length")
+	if not meta.has_field("length"):
+		# A stripped-down master (a CI stub another app created, a half-installed
+		# suite) cannot record a length at all — filtering on it would raise
+		# "Unknown column 'length'".
+		return {}, "Stem Length on this site has no `length` field"
 	has_price = meta.has_field("price")
 	has_company = meta.has_field("company")
 

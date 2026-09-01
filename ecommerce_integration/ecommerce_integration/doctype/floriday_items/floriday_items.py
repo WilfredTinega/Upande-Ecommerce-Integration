@@ -264,6 +264,40 @@ def get_item_code_from_trade_item_id(trade_item_id):
 	return row[0].item_code if row else None
 
 
+def get_item_lengths_for_trade_item(trade_item_id):
+	"""[{item_code, stem_length}] — every mapping row for a Floriday trade item.
+
+	`Floriday Items` names the variety and the `Floriday Item Length` child names
+	the length, so the row that resolves an item code also carries the length;
+	reading only the code threw it away, which is why imported orders arrived
+	with a blank Length.
+
+	Plural on purpose. Floriday grades a stem length by rounding DOWN to the
+	nearest 10 (see `_floriday_length_for`), so one trade item covers a 10cm
+	band — on this bench six of them match two master lengths each, 60cm and
+	63cm sharing grade 60. A `limit 1` would silently pick whichever row the
+	database returned first.
+	"""
+	from ecommerce_integration.ecommerce_integration.utils import has_doctypes
+
+	if not trade_item_id:
+		return []
+	if not has_doctypes("Floriday Items", "Floriday Item Length"):
+		return []
+	return frappe.db.sql(
+		"""
+		select fi.item_code, fil.stem_length
+		from `tabFloriday Items` fi
+		join `tabFloriday Item Length` fil on fil.parent = fi.name
+		where fil.parenttype = 'Floriday Items'
+		and fil.trade_item_id = %s
+		order by fil.stem_length
+		""",
+		(trade_item_id,),
+		as_dict=True,
+	)
+
+
 @frappe.whitelist()
 def sync_system_items(force: bool = False, price_list: str | None = None):
 	if not force and not frappe.db.get_single_value("Floriday Settings", "fi_enabled"):
