@@ -29,6 +29,7 @@ from ecommerce_integration.ecommerce_integration.utils.stem_length import (
 )
 from ecommerce_integration.testing import IntegrationTestCase
 from ecommerce_integration.tests.fixtures import (
+	clear_item_prices,
 	ensure_item,
 	ensure_item_price,
 	ensure_price_list,
@@ -89,6 +90,10 @@ class TestResolveStemLengthRates(IntegrationTestCase):
 			self.skipTest("Stem Length (post-harvest master) is not installed on this site")
 		self.item = ensure_item("_Test EI Rose")
 		self.price_list = ensure_price_list()
+		# A flat Item Price left by an earlier test is the least specific source
+		# in the chain, so it quietly fills the length this class pins to
+		# unpriced — and the "unpriced lengths are dropped" test then sees a rate.
+		clear_item_prices(self.item, self.price_list)
 
 		lengths = master_stem_lengths(3)
 		if len(lengths) < 3:
@@ -147,6 +152,7 @@ class TestResolveSingleRate(IntegrationTestCase):
 			self.skipTest("Stem Length (post-harvest master) is not installed on this site")
 		self.item = ensure_item("_Test EI Single Length Rose")
 		self.price_list = ensure_price_list()
+		clear_item_prices(self.item, self.price_list)
 		self.short, self.long = master_stem_lengths(2)
 
 	def test_matching_length_wins(self):

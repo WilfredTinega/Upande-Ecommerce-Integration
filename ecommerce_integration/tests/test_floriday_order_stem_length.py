@@ -27,6 +27,7 @@ from ecommerce_integration.ecommerce_integration.doctype.floriday_settings.flori
 	get_stem_length_for_trade_item,
 )
 from ecommerce_integration.ecommerce_integration.utils.post_harvest import (
+	clear_stem_length_label_cache,
 	resolve_stem_length_name,
 	stem_length_label_by_name,
 	stem_length_name_by_label,
@@ -104,6 +105,10 @@ class TestStemLengthResolutionIsExact(IntegrationTestCase):
 	"""
 
 	def setUp(self):
+		# The label map is request-scoped, and an earlier test in this run may have
+		# added a master record since it was built. A stale map plus the live
+		# `frappe.db.exists` fast path would disagree with each other.
+		clear_stem_length_label_cache()
 		self.labels = stem_length_name_by_label()
 		if not self.labels:
 			self.skipTest("this site has no Stem Length master")

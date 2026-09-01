@@ -104,24 +104,35 @@ class TestMapDeliveryPointRenamesThePlaceholder(IntegrationTestCase):
 		if not frappe.db.has_column("Delivery Point", "custom_floriday_delivery_point_id"):
 			self.skipTest("Delivery Point has no Floriday GLN field on this site")
 
-		self._forget("Delivery Point", self.TEST_PLACEHOLDER)
-		frappe.get_doc(
+		self._forget_by_gln()
+		self.addCleanup(self._forget_by_gln)
+
+		placeholder = frappe.get_doc(
 			{
 				"doctype": "Delivery Point",
 				"delivery_point": self.TEST_PLACEHOLDER,
 				"custom_floriday_delivery_point_id": self.TEST_GLN,
 			}
 		).insert(ignore_permissions=True)
-		self.addCleanup(self._forget, "Delivery Point", self.TEST_PLACEHOLDER)
 
-	@staticmethod
-	def _forget(doctype, name):
-		if frappe.db.exists(doctype, name):
-			frappe.delete_doc(doctype, name, force=True, ignore_permissions=True)
+		if placeholder.name != self.TEST_PLACEHOLDER:
+			# This site autonames Delivery Point (a hash on the CI stub) rather
+			# than naming it after `delivery_point`, so "GLN <code>" is never a
+			# docname here and the placeholder convention does not exist to test.
+			self.skipTest(f"Delivery Point autonames ({placeholder.name}), not named by delivery_point")
+
+	@classmethod
+	def _forget_by_gln(cls):
+		"""Clean up by GLN, not by name — the record gets RENAMED mid-test."""
+		for name in frappe.get_all(
+			"Delivery Point",
+			filters={"custom_floriday_delivery_point_id": cls.TEST_GLN},
+			pluck="name",
+		):
+			frappe.delete_doc("Delivery Point", name, force=True, ignore_permissions=True)
 
 	def test_naming_the_gln_renames_the_placeholder_and_keeps_the_tag(self):
 		target = "Royal FloraHolland Aalsmeer _Test"
-		self.addCleanup(self._forget, "Delivery Point", target)
 
 		result = map_delivery_point(self.TEST_GLN, target)
 
@@ -135,12 +146,12 @@ class TestMapDeliveryPointRenamesThePlaceholder(IntegrationTestCase):
 
 	def test_mapping_twice_is_a_no_op_not_an_error(self):
 		target = "Royal FloraHolland Aalsmeer _Test"
-		self.addCleanup(self._forget, "Delivery Point", target)
 
-		map_delivery_point(self.TEST_GLN, target)
+		first = map_delivery_point(self.TEST_GLN, target)
+		self.assertEqual(first["status"], "success", first)
+
 		again = map_delivery_point(self.TEST_GLN, target)
-
-		self.assertEqual(again["status"], "success")
+		self.assertEqual(again["status"], "success", again)
 		self.assertIn("already mapped", again["message"])
 
 

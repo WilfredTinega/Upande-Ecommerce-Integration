@@ -1571,7 +1571,7 @@ def on_delivery_point_renamed(doc, method=None, old_name=None, new_name=None, me
 
 
 @frappe.whitelist()
-def map_delivery_point(floriday_gln: str, delivery_point_name: str):
+def map_delivery_point(floriday_gln: str | None = None, delivery_point_name: str | None = None):
 	"""Give a Floriday GLN a real Delivery Point — name and all.
 
 	Tagging alone is not enough, for two reasons:
@@ -1589,6 +1589,9 @@ def map_delivery_point(floriday_gln: str, delivery_point_name: str):
 	someone named themselves is never renamed — the tag simply moves.
 	"""
 	try:
+		# Annotated optional on purpose. `@frappe.whitelist()` enforces the type
+		# hints with pydantic BEFORE the body runs, so a bare `str` would turn a
+		# missing argument into a FrappeTypeError instead of the message below.
 		if not floriday_gln or not delivery_point_name:
 			return {"status": "error", "message": "Missing GLN or Delivery Point name"}
 

@@ -30,6 +30,7 @@ from ecommerce_integration.ecommerce_integration.doctype.biflorica_setting.biflo
 from ecommerce_integration.ecommerce_integration.utils.stem_length import _normalize_stem_length
 from ecommerce_integration.testing import IntegrationTestCase
 from ecommerce_integration.tests.fixtures import (
+	clear_enabled_stock,
 	ensure_enabled_stock,
 	ensure_item,
 	ensure_item_price,
@@ -56,6 +57,10 @@ class TestBifloricaOfferSourcing(IntegrationTestCase):
 			self.skipTest("Shelf / Shelf Item are not installed on this site")
 		self.item = ensure_item("_Test EI Biflorica Rose")
 		self.price_list = ensure_price_list()
+		# Start from nothing enabled. These tests run in name order and each one
+		# enables what it needs, so without this the first assertion of
+		# "nothing enabled" inherits whatever a previous test left behind.
+		clear_enabled_stock(self.item)
 
 	def tearDown(self):
 		if frappe.db.exists("Shelf", SHELF_ID):

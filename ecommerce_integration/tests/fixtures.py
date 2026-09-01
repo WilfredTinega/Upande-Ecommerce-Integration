@@ -142,6 +142,33 @@ def ensure_stem_length(length, price=None):
 	return frappe.get_doc(values).insert(ignore_permissions=True).name
 
 
+def clear_enabled_stock(item_code):
+	"""Drop every `Ecommerce Enabled Stock` row for an item.
+
+	Tests must not inherit each other's enabled rows. Frappe's IntegrationTestCase
+	does not undo a `doc.save()` between tests in a class, so a row one test
+	enables is still there for the next one — which is how
+	"nothing enabled offers nothing" ended up seeing 200 stems enabled by a test
+	that had run before it.
+	"""
+	for name in frappe.get_all("Ecommerce Enabled Stock", filters={"item_code": item_code}, pluck="name"):
+		frappe.delete_doc("Ecommerce Enabled Stock", name, ignore_permissions=True, force=True)
+
+
+def clear_item_prices(item_code, price_list=None):
+	"""Drop every `Item Price` for an item (optionally on one price list).
+
+	Same reason as `clear_enabled_stock`: a flat rate one test creates is the
+	least specific source in the pricing chain, so it silently fills in for the
+	next test's deliberately unpriced length.
+	"""
+	filters = {"item_code": item_code}
+	if price_list:
+		filters["price_list"] = price_list
+	for name in frappe.get_all("Item Price", filters=filters, pluck="name"):
+		frappe.delete_doc("Item Price", name, ignore_permissions=True, force=True)
+
+
 def ensure_shelf(shelf_id, rows):
 	"""A `Shelf` holding exactly `rows`: [(item_code, stem_length, stem_qty), ...].
 

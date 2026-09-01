@@ -22,6 +22,7 @@ from ecommerce_integration.tests.fixtures import (
 	ensure_item,
 	ensure_price_list,
 	has,
+	has_per_length_item_prices,
 	has_stem_length_master,
 )
 
@@ -105,6 +106,10 @@ class TestSeeding(IntegrationTestCase):
 		self.assertEqual(int(total), 100 * first["rows"])
 
 	def test_prices_converge_rather_than_duplicate(self):
+		if not has_per_length_item_prices():
+			# Without `Item Price.custom_length` the seeder writes no per-length
+			# price at all and reports why — nothing to converge on.
+			self.skipTest("Item Price has no custom_length field on this site")
 		master, _ = simulate.ensure_stem_length_master(self.lengths)
 		first = simulate.seed_item_prices(self.items, self.lengths, master=master, price_list=self.price_list)
 		second = simulate.seed_item_prices(
