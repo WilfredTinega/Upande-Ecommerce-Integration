@@ -178,6 +178,15 @@ doc_events = {
 	"Delivery Point": {
 		"after_rename": "ecommerce_integration.ecommerce_integration.doctype.floriday_settings.floriday_sales_order.on_delivery_point_renamed",
 	},
+	# Packed is not a button on the allocation: it is what the pack list says.
+	# `custom_completion_percentage` / `custom_complete` are maintained there as
+	# boxes are actually filled, so the allocation follows them rather than
+	# letting anyone declare an order packed the packhouse has not finished.
+	"Farm Pack List": {
+		"on_update": "ecommerce_integration.ecommerce_integration.doctype.shopify_allocation.shopify_allocation.sync_allocation_packed_status",
+		"on_submit": "ecommerce_integration.ecommerce_integration.doctype.shopify_allocation.shopify_allocation.sync_allocation_packed_status",
+		"on_cancel": "ecommerce_integration.ecommerce_integration.doctype.shopify_allocation.shopify_allocation.sync_allocation_packed_status",
+	},
 	"Sales Order": {
 		# Submitting is the confirmation step for both channels: a Biflorica
 		# preorder is approved on Biflorica, and a Floriday order is fulfilled on

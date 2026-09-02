@@ -8,6 +8,7 @@
   "item_code",
   "item_name",
   "warehouse",
+  "stem_length",
   "available_qty",
   "qty",
   "uom",
@@ -38,6 +39,15 @@
    "in_list_view": 1,
    "label": "Warehouse",
    "options": "Warehouse"
+  },
+  {
+   "columns": 2,
+   "description": "The length these stems are cut to. Chosen per line, not derived: a variety sitting in one farm shop routinely holds several lengths at once, and the packhouse packs to the length on the pick list.",
+   "fieldname": "stem_length",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Stem Length",
+   "options": "Stem Length"
   },
   {
    "columns": 2,
@@ -74,7 +84,7 @@
  "index_web_pages_for_search": 1,
  "istable": 1,
  "links": [],
- "modified": "2026-07-30 08:30:00.000000",
+ "modified": "2026-09-02 22:00:00.000000",
  "modified_by": "Administrator",
  "module": "Ecommerce Integration",
  "name": "Shopify Allocation Item",

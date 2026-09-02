@@ -1,0 +1,104 @@
+{% extends "templates/web.html" %} {% block title %}{{ _("Shopify Order Allocation") }}{% endblock
+%} {% block head_include %}
+<link
+	rel="stylesheet"
+	href="/assets/ecommerce_integration/css/shopify_order_allocation.css?v={{ asset_version }}"
+/>
+<script
+	src="/assets/ecommerce_integration/js/shopify_order_allocation.js?v={{ asset_version }}"
+	defer
+></script>
+{% endblock %} {% block page_content %}
+<div class="sb-wrap">
+	<div class="sb-top">
+		<div class="sb-title">
+			<a class="sb-home" href="/app" title="Back to the desk">&lsaquo; Desk</a>
+			<h1 class="sb-h1">Shopify Order Allocation</h1>
+		</div>
+		<div class="sb-sub" id="sb-stamp"></div>
+	</div>
+
+	<div class="sb-tabs">
+		<button class="sb-tab on" data-v="alloc">
+			Allocation<span class="tc" id="sb-tc-alloc"></span>
+		</button>
+		<button class="sb-tab" data-v="trace">
+			Order traceability<span class="tc" id="sb-tc-trace"></span>
+		</button>
+	</div>
+
+	<div class="sb-row">
+		<div>
+			<label>Shop warehouse</label
+			><select id="sb-wh"></select>
+		</div>
+		<div>
+			<label>Deliveries due within</label>
+			<select id="sb-win">
+				<option value="7">7 days</option>
+				<option value="30" selected>30 days</option>
+				<option value="90">90 days</option>
+				<option value="0">All dates</option>
+			</select>
+		</div>
+		<div id="sb-var-f">
+			<label>Variety search</label
+			><input id="sb-var" type="text" placeholder="e.g. Gelatto" autocomplete="off" />
+		</div>
+		<div><label>&nbsp;</label><button class="sb-btn sec" id="sb-reload">Refresh</button></div>
+	</div>
+
+	<div class="sb-cards">
+		<div class="sb-card ok">
+			<div class="k">Bunches on hand</div>
+			<div class="v" id="sb-c-bunch">&mdash;</div>
+			<div class="note">ready to allocate</div>
+		</div>
+		<div class="sb-card">
+			<div class="k">Stems on hand</div>
+			<div class="v" id="sb-c-stems">&mdash;</div>
+			<div class="note" id="sb-c-stems-note"></div>
+		</div>
+		<div class="sb-card">
+			<div class="k">Varieties</div>
+			<div class="v" id="sb-c-vars">&mdash;</div>
+			<div class="note">aged day 4 and older</div>
+		</div>
+		<div class="sb-card">
+			<div class="k" id="sb-c-alloc-k">Orders in window</div>
+			<div class="v" id="sb-c-alloc">&mdash;</div>
+			<div class="note" id="sb-c-alloc-note">awaiting allocation</div>
+		</div>
+		<div class="sb-card bad" id="sb-card-short">
+			<div class="k" id="sb-c-short-k">Stems short</div>
+			<div class="v" id="sb-c-short">&mdash;</div>
+			<div class="note" id="sb-c-short-note"></div>
+		</div>
+	</div>
+
+	<div class="sb-msg" id="sb-msg"></div>
+
+	<div class="sb-cols">
+		<div class="sb-rail">
+			<h2 id="sb-rail-h">Stage</h2>
+			<div class="rails" id="sb-rail"></div>
+		</div>
+		<div class="sb-pane" id="sb-pane-orders">
+			<h2>Shopify orders</h2>
+			<div class="sb-scroll"><div id="sb-orders"></div></div>
+		</div>
+		<div class="sb-pane wide" id="sb-pane-stock">
+			<h2>Aged shop stock &mdash; day 4 to day 7+</h2>
+			<div class="sb-scroll"><div id="sb-stock"></div></div>
+		</div>
+		<div class="sb-pane full" id="sb-pane-trace" hidden>
+			<h2>Submitted allocations &mdash; pick list through to delivery</h2>
+			<div class="sb-scroll"><div id="sb-trace"></div></div>
+		</div>
+	</div>
+</div>
+<div class="sb-scrim" id="sb-scrim"></div>
+<aside class="sb-drawer" id="sb-drawer"></aside>
+<div class="sb-modal" id="sb-modal"></div>
+<div class="sb-toasts" id="sb-toasts"></div>
+{% endblock %}
