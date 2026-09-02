@@ -163,18 +163,19 @@ def fetch_floriday_delivery_location_by_gln(gln_code, settings):
 				return None
 
 			payload = r.json() or {}
-			# The response is SyncResultOfDeliveryLocation: { results: [...], maximumSequenceNumber }
+			# The response is SyncResultOfDeliveryLocation: { results: [...], maximumSequenceNumber }.
+			# NOTE: maximumSequenceNumber is the highest sequence number *in this page*, not the
+			# highest that exists — /sync/0 reports the 1000th record's number, and asking for the
+			# next window returns another 1000 with a higher "maximum". So it must never be used as
+			# a stop condition; the only reliable end-of-stream signal is an empty results list.
 			# Be defensive in case the shape varies between API versions or environments.
 			if isinstance(payload, dict):
 				batch = payload.get("results") or []
-				api_max_seq = payload.get("maximumSequenceNumber")
-				last_api_max = api_max_seq
+				last_api_max = payload.get("maximumSequenceNumber")
 			elif isinstance(payload, list):
 				batch = payload
-				api_max_seq = None
 			else:
 				batch = []
-				api_max_seq = None
 
 			if not batch:
 				break
@@ -192,11 +193,8 @@ def fetch_floriday_delivery_location_by_gln(gln_code, settings):
 				if isinstance(seq_num, int) and seq_num > max_seq_seen:
 					max_seq_seen = seq_num
 
-			# Stop once we've reached the API's reported maximum.
-			if isinstance(api_max_seq, int) and max_seq_seen >= api_max_seq:
-				break
-
-			# Advance to next sequence-number window.
+			# Advance to next sequence-number window. The loop ends when a page comes back
+			# empty (above), when no sequence number advanced, or at the safety cap.
 			if max_seq_seen < seq:
 				# No progress made — avoid an infinite loop.
 				break
@@ -261,8 +259,12 @@ def ensure_delivery_point_for_gln(gln_code, settings, address_fallback=None):
 	Ensure a Delivery Point exists for the given Floriday GLN.
 	- If one already exists with custom_floriday_delivery_point_id == gln_code, return its name.
 	- Otherwise fetch the DeliveryLocation from Floriday and create a Delivery Point
-	  using the data the API returns (name + address). Returns None if the GLN
-	  cannot be resolved (no GLN, no Floriday match, and no fallback name).
+	  using the data the API returns (name + address).
+	- A GLN always ends up with its own Delivery Point carrying the GLN tag: when Floriday
+	  names neither the location nor the organization, the record is created as
+	  "GLN <code>" and an operator can rename it later via map_delivery_point().
+	  Returns None only when there is no GLN, when every candidate name is already held
+	  by a different GLN, or when the insert fails.
 
 	address_fallback is a dict of {addressLine, city, countryCode, postalCode} extracted
 	from the sales order's delivery.location.address — used only when Floriday's
@@ -334,23 +336,14 @@ def ensure_delivery_point_for_gln(gln_code, settings, address_fallback=None):
 		if not address and address_fallback:
 			address = address_fallback
 
-	# Final fallback: use the existing JKIA Delivery Point if it exists.
-	# Do NOT tag it with the GLN — JKIA is a shared catch-all, tagging would corrupt
-	# the GLN→Delivery Point mapping for whatever JKIA legitimately represents.
+	# Final fallback: name it after the GLN and create it. Never route an unresolved
+	# GLN onto a shared catch-all like JKIA — that loses which location the order was
+	# actually for, and merges unrelated buyers onto one Delivery Point. A GLN is a
+	# unique, stable identifier for the delivery location, so this is a real Delivery
+	# Point with a placeholder NAME, not a guess: it gets tagged below like any other,
+	# the next order for this GLN reuses the same record, and an operator can give it
+	# its real name with map_delivery_point() once they know who it is.
 	if not dp_name:
-		if frappe.db.exists("Delivery Point", "JKIA"):
-			log_short(
-				f"GLN {gln_code} unresolved — falling back to JKIA Delivery Point",
-				"Floriday Delivery Point Resolution",
-				False,
-			)
-			return "JKIA"
-		# Nothing named it, so name it after the GLN. A GLN is a unique, stable
-		# identifier for the delivery location, so this is a real Delivery Point
-		# with a placeholder NAME — not a guess. It gets tagged below like any
-		# other, so the next order for this GLN reuses the same record, and an
-		# operator can rename it once they know who it is. Returning None instead
-		# blocked the whole order over a missing label.
 		dp_name = f"GLN {gln_code}"
 		name_source = "gln"
 		log_short(
@@ -368,10 +361,36 @@ def ensure_delivery_point_for_gln(gln_code, settings, address_fallback=None):
 	# Truncate to the Delivery Point field's max length (Data field default 140)
 	dp_name = dp_name[:140]
 
-	# If a Delivery Point with this name already exists but isn't tagged with the GLN
-	# (or has a stale GLN), tag it and reuse instead of creating a duplicate.
-	if frappe.db.exists("Delivery Point", dp_name):
-		_ensure_gln_tagged(dp_name)
+	# If a Delivery Point with this name already exists, reuse it — but only when it is
+	# unclaimed or already claimed by THIS GLN. Overwriting another GLN's tag would merge
+	# two Floriday delivery locations onto one Delivery Point and make the tag flap
+	# between them order by order, so a claimed name means this GLN gets its own record:
+	# the same name disambiguated by the GLN, or the bare "GLN <code>" placeholder.
+	if has_gln_field:
+		for candidate in (dp_name, f"{dp_name} ({gln_code})"[:140], f"GLN {gln_code}"):
+			if not frappe.db.exists("Delivery Point", candidate):
+				dp_name = candidate
+				break
+			holder = frappe.db.get_value("Delivery Point", candidate, "custom_floriday_delivery_point_id")
+			if not holder or holder == gln_code:
+				_ensure_gln_tagged(candidate)
+				return candidate
+			log_short(
+				f"Delivery Point '{candidate}' holds GLN {holder} — not reusing it for GLN {gln_code}",
+				"Floriday Delivery Point Resolution",
+				False,
+			)
+		else:
+			# Every candidate name is taken by a different GLN. Don't hijack any of them;
+			# the order still imports, just without a Delivery Point.
+			log_short(
+				f"GLN {gln_code} could not claim a Delivery Point name (all candidates held by other GLNs)",
+				"Floriday Delivery Point Resolution",
+				True,
+			)
+			return None
+	elif frappe.db.exists("Delivery Point", dp_name):
+		# No GLN field on this site — nothing to conflict over, so reuse by name.
 		return dp_name
 
 	# 4. Create the Delivery Point
@@ -401,8 +420,22 @@ def ensure_delivery_point_for_gln(gln_code, settings, address_fallback=None):
 		_ensure_gln_tagged(doc.name)
 		return doc.name
 	except frappe.exceptions.DuplicateEntryError:
+		# Raced with another import for the same name. Reuse it, but (as above) never
+		# take a name that a different GLN already holds.
 		frappe.db.rollback()
 		if frappe.db.exists("Delivery Point", dp_name):
+			holder = (
+				frappe.db.get_value("Delivery Point", dp_name, "custom_floriday_delivery_point_id")
+				if has_gln_field
+				else None
+			)
+			if holder and holder != gln_code:
+				log_short(
+					f"Delivery Point '{dp_name}' holds GLN {holder} — not reusing it for GLN {gln_code}",
+					"Floriday Delivery Point Resolution",
+					True,
+				)
+				return None
 			_ensure_gln_tagged(dp_name)
 			return dp_name
 		return None
@@ -919,7 +952,7 @@ def create_sales_order_from_floriday(floriday_order, warehouse, settings=None):
 
 	# Persist the Floriday delivery GLN directly on the order document.
 	# Order fulfillment reads from this field — independent of the Delivery Point,
-	# so JKIA fallback orders still get fulfilled with the correct buyer GLN.
+	# so orders on an auto-created placeholder still get fulfilled with the correct buyer GLN.
 	# (On Quotation this only applies where the custom field has been added.)
 	if delivery_gln and frappe.db.has_column(target_dt, "custom_floriday_delivery_id"):
 		sales_order.custom_floriday_delivery_id = delivery_gln

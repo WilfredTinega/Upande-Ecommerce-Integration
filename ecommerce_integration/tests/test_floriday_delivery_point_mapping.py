@@ -23,6 +23,7 @@ import frappe
 
 from ecommerce_integration.ecommerce_integration.doctype.floriday_settings.floriday_sales_order import (
 	DELIVERY_POINT_NAME_MIRRORS,
+	ensure_delivery_point_for_gln,
 	is_gln_placeholder,
 	map_delivery_point,
 	repoint_delivery_point_name,
@@ -163,3 +164,99 @@ class TestRenameHookIsRegistered(IntegrationTestCase):
 			any("on_delivery_point_renamed" in h for h in handlers),
 			f"after_rename handlers: {handlers}",
 		)
+
+
+class TestEveryGlnGetsItsOwnDeliveryPoint(IntegrationTestCase):
+	"""An unresolved GLN must never be routed onto a shared catch-all Delivery Point.
+
+	Sending it to JKIA (or any other shared record) throws away which location the
+	order was for and merges unrelated buyers, so the importer always creates a
+	Delivery Point carrying the GLN — named by Floriday when Floriday knows the
+	name, "GLN <code>" when it doesn't.
+	"""
+
+	# One GLN per test: the tag is unique, so a GLN reused across tests would be
+	# resolved from the record the previous test left behind.
+	UNNAMED_GLN = "9990000000002"
+	UNNAMED_GLN_2 = "9990000000003"
+	NAMED_GLN = "9990000000004"
+	REUSED_GLN = "9990000000005"
+	CLASHING_GLN = "9990000000006"
+	HOLDER_GLN = "9990000000007"
+
+	def setUp(self):
+		if not has("Delivery Point"):
+			self.skipTest("Delivery Point is not on this site")
+		if not frappe.db.has_column("Delivery Point", "custom_floriday_delivery_point_id"):
+			self.skipTest("Delivery Point has no Floriday GLN field on this site")
+		if self._insert_point("_Test EI Naming Probe") != "_Test EI Naming Probe":
+			self.skipTest("Delivery Point autonames rather than being named by delivery_point")
+
+		# Floriday is not called: each test declares what, if anything, it names.
+		self.floriday_names = {}
+		for target, value in (
+			("fetch_floriday_delivery_location_by_gln", self._named_location),
+			("fetch_floriday_organization_by_gln", lambda gln, settings: None),
+		):
+			patcher = patch(f"{SALES_ORDER_MODULE}.{target}", side_effect=value)
+			patcher.start()
+			self.addCleanup(patcher.stop)
+
+	def _named_location(self, gln, settings):
+		name = self.floriday_names.get(gln)
+		return {"name": name} if name else None
+
+	@staticmethod
+	def _insert_point(name, gln=None):
+		if frappe.db.exists("Delivery Point", name):
+			return name
+		doc = frappe.get_doc({"doctype": "Delivery Point", "delivery_point": name})
+		if gln:
+			doc.custom_floriday_delivery_point_id = gln
+		return doc.insert(ignore_permissions=True).name
+
+	@staticmethod
+	def _tag_of(name):
+		return frappe.db.get_value("Delivery Point", name, "custom_floriday_delivery_point_id")
+
+	def test_a_gln_floriday_cannot_name_still_gets_a_tagged_placeholder(self):
+		name = ensure_delivery_point_for_gln(self.UNNAMED_GLN, frappe._dict())
+
+		self.assertEqual(name, f"GLN {self.UNNAMED_GLN}")
+		self.assertEqual(self._tag_of(name), self.UNNAMED_GLN)
+
+	def test_an_existing_jkia_is_not_used_as_a_catch_all(self):
+		self._insert_point("JKIA")
+
+		name = ensure_delivery_point_for_gln(self.UNNAMED_GLN_2, frappe._dict())
+
+		self.assertNotEqual(name, "JKIA")
+		self.assertIsNone(self._tag_of("JKIA"), "JKIA must not be tagged with somebody's GLN")
+
+	def test_floriday_s_own_name_is_used_when_it_has_one(self):
+		self.floriday_names[self.NAMED_GLN] = "_Test EI Nairobi Airport"
+
+		name = ensure_delivery_point_for_gln(self.NAMED_GLN, frappe._dict())
+
+		self.assertEqual(name, "_Test EI Nairobi Airport")
+		self.assertEqual(self._tag_of(name), self.NAMED_GLN)
+
+	def test_an_untagged_delivery_point_of_that_name_is_reused_and_tagged(self):
+		self._insert_point("_Test EI Untagged Point")
+		self.floriday_names[self.REUSED_GLN] = "_Test EI Untagged Point"
+
+		name = ensure_delivery_point_for_gln(self.REUSED_GLN, frappe._dict())
+
+		self.assertEqual(name, "_Test EI Untagged Point")
+		self.assertEqual(self._tag_of(name), self.REUSED_GLN)
+
+	def test_a_name_another_gln_holds_is_not_hijacked(self):
+		"""Two delivery locations can share a name; they cannot share the tag."""
+		held = self._insert_point("_Test EI Shared Name", gln=self.HOLDER_GLN)
+		self.floriday_names[self.CLASHING_GLN] = "_Test EI Shared Name"
+
+		name = ensure_delivery_point_for_gln(self.CLASHING_GLN, frappe._dict())
+
+		self.assertEqual(name, f"_Test EI Shared Name ({self.CLASHING_GLN})")
+		self.assertEqual(self._tag_of(name), self.CLASHING_GLN)
+		self.assertEqual(self._tag_of(held), self.HOLDER_GLN, "the first GLN keeps its record")
