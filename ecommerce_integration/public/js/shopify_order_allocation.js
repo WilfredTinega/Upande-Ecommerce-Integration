@@ -156,7 +156,7 @@
 					if (el.parentNode) el.parentNode.removeChild(el);
 				}, 260);
 			},
-			kind === "err" ? 9000 : 5000,
+			kind === "err" ? 9000 : 5000
 		);
 	}
 
@@ -238,11 +238,11 @@
 	}
 
 	function skeletonCards(on) {
-		["sb-c-bunch", "sb-c-stems", "sb-c-vars", "sb-c-alloc", "sb-c-short"].forEach(
-			function (id) {
-				if (on) $(id).innerHTML = '<span class="sk-bar sk-num"></span>';
-			},
-		);
+		["sb-c-bunch", "sb-c-stems", "sb-c-vars", "sb-c-alloc", "sb-c-short"].forEach(function (
+			id
+		) {
+			if (on) $(id).innerHTML = '<span class="sk-bar sk-num"></span>';
+		});
 	}
 
 	// ------------------------------------------------------------------ fetching
@@ -329,7 +329,7 @@
 				toast("Selling units unavailable &mdash; quantities are shown in stems.", "warn");
 				reportError("read the selling units", raw || { message: d });
 				done();
-			},
+			}
 		);
 	}
 
@@ -349,7 +349,7 @@
 			function () {
 				LENGTHS = [];
 				done();
-			},
+			}
 		);
 	}
 
@@ -387,7 +387,7 @@
 				reportError("read the allocations", raw || { message: d });
 				ALLOCS = [];
 				done();
-			},
+			}
 		);
 	}
 
@@ -448,7 +448,7 @@
 				blockTrace(names, "Order Pick List");
 				reportError("read the pick lists", raw || { message: d });
 				done();
-			},
+			}
 		);
 	}
 
@@ -491,7 +491,7 @@
 				blockTrace(Object.keys(TRACE), "Farm Pack List");
 				reportError("read the pack lists", raw || { message: d });
 				done();
-			},
+			}
 		);
 	}
 
@@ -533,7 +533,7 @@
 				blockTrace(Object.keys(TRACE), "Box Label");
 				reportError("read the box labels", raw || { message: d });
 				done();
-			},
+			}
 		);
 	}
 
@@ -568,7 +568,7 @@
 						esc(method.replace(/_/g, " ")) +
 						(typeof out === "string" ? ": " + esc(out) : " done") +
 						".",
-					"ok",
+					"ok"
 				);
 				loadAll(true);
 			},
@@ -648,9 +648,9 @@
 				(STOCK.length
 					? "Nothing aged in " + esc(shortWh(wh())) + "."
 					: REASON
-						? esc(REASON)
-						: "No farm shop holds aged stock. Anything 3 days old or newer is " +
-							"excluded here, the same as Available for Sale &gt; Shop.") +
+					? esc(REASON)
+					: "No farm shop holds aged stock. Anything 3 days old or newer is " +
+					  "excluded here, the same as Available for Sale &gt; Shop.") +
 				"</div>";
 			setCards(0, 0, 0);
 			return;
@@ -906,13 +906,13 @@
 			"alloc",
 			"In the pipeline",
 			n(all.length - delivered),
-			"submitted, not yet delivered",
+			"submitted, not yet delivered"
 		);
 		setCard(
 			"short",
 			"Delivered",
 			n(delivered),
-			all.length ? "of " + all.length + " submitted" : "",
+			all.length ? "of " + all.length + " submitted" : ""
 		);
 
 		if (!rows.length) {
@@ -920,17 +920,17 @@
 				'<div class="sb-empty">' +
 				(all.length
 					? "Nothing is " +
-						esc(traceLabel(TSTAGE).toLowerCase()) +
-						" for <b>" +
-						esc(shortWh(wh())) +
-						"</b>. " +
-						all.length +
-						" submitted " +
-						(all.length === 1 ? "allocation is" : "allocations are") +
-						" being tracked."
+					  esc(traceLabel(TSTAGE).toLowerCase()) +
+					  " for <b>" +
+					  esc(shortWh(wh())) +
+					  "</b>. " +
+					  all.length +
+					  " submitted " +
+					  (all.length === 1 ? "allocation is" : "allocations are") +
+					  " being tracked."
 					: "Nothing submitted yet for <b>" +
-						esc(shortWh(wh())) +
-						"</b>. Allocate an order and submit it, and it will appear here on its way to delivery.") +
+					  esc(shortWh(wh())) +
+					  "</b>. Allocate an order and submit it, and it will appear here on its way to delivery.") +
 				"</div>";
 			return;
 		}
@@ -1004,8 +1004,8 @@
 		$("sb-trace").innerHTML =
 			(anyBlocked()
 				? "<div class='sb-note'>Some steps read <b>no access</b>: the packing doctypes " +
-					"have their own permissions, so parts of the chain cannot be shown to you. " +
-					"They are left blank rather than reported as not done.</div>"
+				  "have their own permissions, so parts of the chain cannot be shown to you. " +
+				  "They are left blank rather than reported as not done.</div>"
 				: "") +
 			"<table class='sb tr'><thead><tr><th>Order</th><th>Delivery</th>" +
 			"<th>Pipeline</th><th>Waiting on</th></tr></thead><tbody>" +
@@ -1102,11 +1102,11 @@
 			"<div class='sb-due'><div class='due-t'>" +
 			(open.length
 				? "Allocate " +
-					(open.length === 1 ? "this order" : "these " + open.length + " orders") +
-					" so they can be delivered today or tomorrow"
+				  (open.length === 1 ? "this order" : "these " + open.length + " orders") +
+				  " so they can be delivered today or tomorrow"
 				: due.length +
-					(due.length === 1 ? " order is" : " orders are") +
-					" due today or tomorrow &mdash; all allocated") +
+				  (due.length === 1 ? " order is" : " orders are") +
+				  " due today or tomorrow &mdash; all allocated") +
 			"</div><div class='due-l'>" +
 			items +
 			"</div></div>"
@@ -1131,12 +1131,12 @@
 				(!ALLOCS.length
 					? "No Shopify allocations exist yet. The allocation job on Shopify Settings raises them."
 					: "No " +
-						esc(stageLabel(STAGE).toLowerCase()) +
-						" for <b>" +
-						esc(shortWh(wh())) +
-						"</b> in this window. " +
-						ALLOCS.length +
-						" allocations exist &mdash; widen the window or pick another stage.") +
+					  esc(stageLabel(STAGE).toLowerCase()) +
+					  " for <b>" +
+					  esc(shortWh(wh())) +
+					  "</b> in this window. " +
+					  ALLOCS.length +
+					  " allocations exist &mdash; widen the window or pick another stage.") +
 				"</div>";
 			setCard("short", "Stems short", "0", "");
 			wireDue();
@@ -1201,7 +1201,7 @@
 			"short",
 			"Stems short",
 			n(short),
-			late ? late + " already late" : "all within date",
+			late ? late + " already late" : "all within date"
 		);
 
 		Array.prototype.forEach.call($("sb-orders").querySelectorAll("tr.pick"), function (tr) {
@@ -1437,14 +1437,14 @@
 					(locked
 						? "<td class='q'><span class='dr-ro'>" + n(r.take) + "</span></td>"
 						: '<td class="q"><input class="qty" type="number" min="0" step="1" max="' +
-							Math.max(r.bunches, r.take || 0) +
-							'" value="' +
-							r.take +
-							'" data-i="' +
-							esc(r.item) +
-							'" data-f="' +
-							r.factor +
-							'"></td>') +
+						  Math.max(r.bunches, r.take || 0) +
+						  '" value="' +
+						  r.take +
+						  '" data-i="' +
+						  esc(r.item) +
+						  '" data-f="' +
+						  r.factor +
+						  '"></td>') +
 					'<td class="q stems" data-s="' +
 					esc(r.item) +
 					'">' +
@@ -1486,7 +1486,7 @@
 				esc(a.recipient_name || "") +
 					(a.recipient_phone
 						? "<div class='sub'>" + esc(a.recipient_phone) + "</div>"
-						: ""),
+						: "")
 			) +
 			cell("Billing customer", esc(a.customer || "")) +
 			cell("Subscription", esc(a.shopify_subscription || "")) +
@@ -1496,14 +1496,14 @@
 					stageOf(a) +
 					"'>" +
 					esc(stageLabel(stageOf(a))) +
-					"</span>",
+					"</span>"
 			) +
 			cell("Shop", esc(shortWh(a.source_warehouse))) +
 			cell("Reserve to", esc(shortWh(a.reserve_warehouse || ""))) +
 			cell(
 				"Ship to",
 				[a.shipping_address, a.shipping_city].filter(Boolean).map(esc).join(", "),
-				true,
+				true
 			) +
 			cell("Needs", n(need) + " stems") +
 			"</div>" +
@@ -1512,26 +1512,26 @@
 			"<div class='dr-warn' id='dr-warn'></div>" +
 			(pool.length
 				? (locked ? "" : lenSetAll(pool)) +
-					"<div class='dr-scroll'><table class='sb'><thead><tr><th>Variety</th>" +
-					"<th class='q'>On hand</th><th>Length</th>" +
-					"<th class='q'>" +
-					(locked ? "Bunches" : "Allocate") +
-					"</th><th class='q'>Stems</th>" +
-					"</tr></thead><tbody>" +
-					rows +
-					"</tbody></table></div>"
+				  "<div class='dr-scroll'><table class='sb'><thead><tr><th>Variety</th>" +
+				  "<th class='q'>On hand</th><th>Length</th>" +
+				  "<th class='q'>" +
+				  (locked ? "Bunches" : "Allocate") +
+				  "</th><th class='q'>Stems</th>" +
+				  "</tr></thead><tbody>" +
+				  rows +
+				  "</tbody></table></div>"
 				: "<div class='sb-empty'>Nothing aged in " +
-					esc(shortWh(a.source_warehouse)) +
-					" to allocate.</div>") +
+				  esc(shortWh(a.source_warehouse)) +
+				  " to allocate.</div>") +
 			"<div class='dr-foot'>" +
 			(a.docstatus === 1
 				? pipelineButtons(a)
 				: "<button class='sb-btn sec' id='dr-save'" +
-					(pool.length ? "" : " disabled") +
-					">Save draft</button>" +
-					"<button class='sb-btn' id='dr-submit'" +
-					(pool.length ? "" : " disabled") +
-					">Submit &amp; reserve</button>") +
+				  (pool.length ? "" : " disabled") +
+				  ">Save draft</button>" +
+				  "<button class='sb-btn' id='dr-submit'" +
+				  (pool.length ? "" : " disabled") +
+				  ">Submit &amp; reserve</button>") +
 			"<a class='sb-btn sec' target='_blank' href='/app/shopify-allocation/" +
 			encodeURIComponent(a.name) +
 			"'>Open document</a>" +
@@ -1550,7 +1550,7 @@
 				sel.addEventListener("change", function () {
 					warn("");
 				});
-			},
+			}
 		);
 		Array.prototype.forEach.call(
 			$("sb-drawer").querySelectorAll(".dr-setall button"),
@@ -1567,7 +1567,7 @@
 							});
 							if (has) sel.value = want;
 							else if (sel.parentNode) skipped++;
-						},
+						}
 					);
 					warn(
 						skipped
@@ -1577,10 +1577,10 @@
 									skipped +
 									(skipped === 1 ? " variety" : " varieties") +
 									" the shop has never graded to that length."
-							: "",
+							: ""
 					);
 				});
-			},
+			}
 		);
 		if (a.docstatus === 1) {
 			wirePipeline(a);
@@ -1684,7 +1684,7 @@
 								"</b> &mdash; the stems are back in <b>" +
 								esc(shortWh(a.source_warehouse)) +
 								"</b>.",
-							"ok",
+							"ok"
 						);
 						loadAll(true);
 					},
@@ -1694,7 +1694,7 @@
 					},
 				});
 			},
-			"Yes, cancel it",
+			"Yes, cancel it"
 		);
 	}
 
@@ -1764,7 +1764,7 @@
 							"</b> capped at " +
 							allowed +
 							(allowed === 1 ? " bunch" : " bunches") +
-							" &mdash; that is all the order still needs.",
+							" &mdash; that is all the order still needs."
 			);
 		} else {
 			warn("");
@@ -1813,10 +1813,10 @@
 			(need && total < need
 				? " &middot; <span class='sb-short'>" + n(need - total) + " short</span>"
 				: need && total > need
-					? " &middot; <span class='sb-short'>" + n(total - need) + " over</span>"
-					: need
-						? " &middot; <span class='sb-cov'>covered</span>"
-						: "");
+				? " &middot; <span class='sb-short'>" + n(total - need) + " over</span>"
+				: need
+				? " &middot; <span class='sb-cov'>covered</span>"
+				: "");
 	}
 
 	// Read the bunch inputs back as STEMS, with both floors enforced here as well
@@ -1853,7 +1853,7 @@
 				"Pick a stem length for <b>" +
 					noLength.map(esc).join("</b>, <b>") +
 					"</b> &mdash; packing works off it.",
-				"err",
+				"err"
 			);
 			return null;
 		}
@@ -1867,7 +1867,7 @@
 					n(total - need) +
 					" stems more than the order needs. " +
 					"Reduce a variety before saving.",
-				"err",
+				"err"
 			);
 			return null;
 		}
@@ -1875,7 +1875,7 @@
 		if (items.length < 2 && choices > 1) {
 			msg(
 				"An order must draw on at least <b>two varieties</b>. Add a second one before saving.",
-				"err",
+				"err"
 			);
 			return null;
 		}
@@ -1891,7 +1891,7 @@
 		["dr-save", "dr-submit", "dr-pick", "dr-pack", "dr-shipped", "dr-cancel"].forEach(
 			function (id) {
 				if ($(id)) $(id).disabled = on;
-			},
+			}
 		);
 		if (!label) return;
 		var target = $("dr-submit") || $("dr-pack") || $("dr-shipped") || $("dr-pick");
@@ -1927,15 +1927,15 @@
 					"<li>Raises the pick list so packing can start.</li></ul>" +
 					(stems < need
 						? "<p class='sb-short'>This is " +
-							n(need - stems) +
-							" stems short of the " +
-							n(need) +
-							" the order needs.</p>"
+						  n(need - stems) +
+						  " stems short of the " +
+						  n(need) +
+						  " the order needs.</p>"
 						: "") +
 					"<p class='md-note'>Reversing it means cancelling the allocation.</p>",
 				function () {
 					write(a, items, true);
-				},
+				}
 			);
 			return;
 		}
@@ -1981,7 +1981,7 @@
 					encodeURIComponent(opl.name);
 				fetch(
 					"https://api.qrserver.com/v1/create-qr-code/?size=600x600&margin=0&format=png&data=" +
-						encodeURIComponent(deskUrl),
+						encodeURIComponent(deskUrl)
 				)
 					.then(function (resp) {
 						if (!resp.ok) throw new Error("QR service returned " + resp.status);
@@ -2029,14 +2029,14 @@
 								esc(opl.name) +
 								"</b> was raised, but its QR code was not generated. " +
 								"Use <b>Regenerate QR Code</b> on the pick list.",
-							"warn",
+							"warn"
 						);
 						reportError("generate the pick list QR code", {
 							message: (e && e.message) || String(e),
 						});
 					});
 			},
-			function () {},
+			function () {}
 		);
 	}
 
@@ -2067,7 +2067,7 @@
 									"</b> (" +
 									n(saved.total_qty) +
 									" stems). Still a draft &mdash; submit it to reserve the stock.",
-								"ok",
+								"ok"
 							);
 							loadAll(true);
 							return;
@@ -2086,11 +2086,11 @@
 										" stems reserved" +
 										(done.stock_entry
 											? " on Stock Entry <b>" +
-												esc(done.stock_entry) +
-												"</b>"
+											  esc(done.stock_entry) +
+											  "</b>"
 											: "") +
 										". It moves to Order traceability from here.",
-									"ok",
+									"ok"
 								);
 								attachOplQr(a.name);
 								loadAll(true);
