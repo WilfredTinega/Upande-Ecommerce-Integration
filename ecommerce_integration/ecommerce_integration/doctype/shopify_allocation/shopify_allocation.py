@@ -4,7 +4,86 @@
 import frappe
 from frappe import _
 from frappe.model.document import Document
-from frappe.utils import cint, cstr, flt, nowdate
+from frappe.utils import cint, cstr, flt, get_url, nowdate
+
+STEM_LENGTH = "Stem Length"
+
+
+def _pick_list_qr(pick_name):
+	"""Attach a QR of the pick list's own desk URL, or None if it cannot be made.
+
+	Reuses the Upande Tambuzi generator so the code a scanner reads off a Shopify
+	pick list is the same one every other pick list on that site carries.
+
+	A nicety, not the point of the document: on a site without that app, or
+	without the `qrcode` library, the pick list is still raised and submitted.
+	"""
+	try:
+		from upande_tambuzi.server_scripts.opl_qr_code_gen import generate_qr_code
+	except ImportError:
+		return None
+
+	try:
+		return generate_qr_code(f"{get_url()}/app/order-pick-list/{pick_name}", pick_name)
+	except Exception:
+		frappe.log_error(
+			title=f"Order Pick List {pick_name}: QR code not generated",
+			message=frappe.get_traceback(),
+		)
+		return None
+
+
+def _packing_state(allocation):
+	"""{fpl, percent, complete} for an allocation, read straight off the pack list.
+
+	`custom_complete` is the packhouse's own flag; the percentage is the fallback
+	for a pack list where it has not been set. A missing pack list is 0% - not
+	packed, rather than unknown, because nothing has been boxed yet.
+	"""
+	blank = {"fpl": None, "percent": 0, "complete": False}
+	if not frappe.db.exists("DocType", "Farm Pack List"):
+		return blank
+
+	pick = frappe.db.get_value(
+		"Order Pick List",
+		{"custom_shopify_allocation": allocation, "docstatus": ["<", 2]},
+		"name",
+	)
+	if not pick:
+		return blank
+
+	packs = frappe.get_all(
+		"Farm Pack List",
+		filters={"custom_order_pick_list": pick, "docstatus": ["<", 2]},
+		fields=["name", "custom_completion_percentage", "custom_complete"],
+		order_by="docstatus desc, creation desc",
+		limit_page_length=1,
+	)
+	if not packs:
+		return blank
+
+	pack = packs[0]
+	percent = flt(pack.custom_completion_percentage)
+	return {
+		"fpl": pack.name,
+		"percent": percent,
+		"complete": bool(cint(pack.custom_complete) or percent >= 100),
+	}
+
+
+def sync_allocation_packed_status(doc, method=None):
+	"""Farm Pack List hook: keep the allocation's status in step with packing.
+
+	Only for pack lists that belong to a Shopify allocation - the farm's own pack
+	lists have nothing to do with this doctype.
+	"""
+	pick = doc.get("custom_order_pick_list")
+	if not pick:
+		return
+	allocation = frappe.db.get_value("Order Pick List", pick, "custom_shopify_allocation")
+	if not allocation or not frappe.db.exists("Shopify Allocation", allocation):
+		return
+	frappe.get_doc("Shopify Allocation", allocation).sync_packed_status()
 
 
 class ShopifyAllocation(Document):
@@ -53,31 +132,88 @@ class ShopifyAllocation(Document):
 		if shortfalls:
 			frappe.throw(_("Not enough stock to reserve") + " — " + "; ".join(shortfalls))
 
+		# The packhouse packs to the length on the pick list, so a line with no
+		# length is a line nobody can pack. It is asked for here rather than in
+		# validate() because a draft is deliberately allowed to be half-filled.
+		if frappe.db.exists("DocType", STEM_LENGTH):
+			missing = [
+				f"row {row.idx}: {row.item_code}"
+				for row in self.items
+				if flt(row.qty) > 0 and not row.get("stem_length")
+			]
+			if missing:
+				frappe.throw(
+					_("Every allocated line needs a stem length — packing works off it")
+					+ ": "
+					+ "; ".join(missing)
+				)
+
 	def on_submit(self):
 		self._create_reservation()
 		self._set_order_status("Allocated")
 		self.db_set("status", "Allocated")
+		self._auto_create_pick_list()
 
 	def on_cancel(self):
-		self.ignore_linked_doctypes = ("Stock Entry",)
+		# Everything named here is taken down by _unwind_packing below, so the
+		# back-link check must not refuse the cancel on their account.
+		self.ignore_linked_doctypes = (
+			"Stock Entry",
+			"Order Pick List",
+			"Farm Pack List",
+			"Box Label",
+		)
+		self._unwind_packing()
 		self._cancel_reservation()
 		self.db_set("status", "Cancelled")
 		self._refresh_order_state()
+		self._reopen_for_allocation()
 
 	# ------------------------------------------------------------------ pipeline
 
 	@frappe.whitelist()
-	def mark_packed(self):
-		if self.docstatus != 1:
-			frappe.throw(_("Submit the allocation before marking it packed."))
-		self.db_set("status", "Packed")
-		self._set_order_status("Packed")
-		return self.status
+	def packing_state(self):
+		"""How far the pack list has got: {fpl, percent, complete}.
+
+		Read-only. Packed is not something anybody asserts on the allocation - it
+		is what the Farm Pack List says, and that carries its own
+		`custom_completion_percentage` / `custom_complete`, maintained as boxes
+		are actually filled. A button that let someone declare an order packed
+		could only ever disagree with the packhouse.
+		"""
+		return _packing_state(self.name)
+
+	def sync_packed_status(self):
+		"""Move the allocation to Packed once, and only once, packing is complete.
+
+		Driven from the pack list rather than from a button - see `packing_state`.
+		Called by the Farm Pack List hook, so it lands the moment the packhouse
+		finishes rather than whenever someone next opens the board.
+		"""
+		if self.docstatus != 1 or self.status == "Cancelled":
+			return self.status
+
+		state = _packing_state(self.name)
+		want = "Packed" if state["complete"] else "Allocated"
+
+		# Shipped is further along than either; nothing here walks it back.
+		if self.status in ("Shipped",):
+			return self.status
+		if self.status != want:
+			self.db_set("status", want)
+			self._set_order_status(want)
+		return want
 
 	@frappe.whitelist()
 	def mark_shipped(self):
-		if self.status != "Packed":
-			frappe.throw(_("Mark the allocation packed before shipping it."))
+		if not _packing_state(self.name)["complete"]:
+			frappe.throw(
+				_("This order is not fully packed yet, so it cannot be dispatched.")
+				+ " "
+				+ _("Packing is {0}% done on the pack list.").format(
+					cint(_packing_state(self.name)["percent"])
+				)
+			)
 		self.db_set("status", "Shipped")
 		self._set_order_status("Shipped")
 		return self.status
@@ -108,6 +244,10 @@ class ShopifyAllocation(Document):
 
 		ensure_packing_link_fields()
 
+		pick_meta = frappe.get_meta("Pick List Item")
+		pick_has_link = pick_meta.has_field("custom_lgth")
+		pick_has_data = pick_meta.has_field("custom_length")
+
 		pick = frappe.new_doc("Order Pick List")
 		pick.custom_shopify_allocation = self.name
 		pick.customer = self.customer
@@ -125,6 +265,9 @@ class ShopifyAllocation(Document):
 			warehouse = row.warehouse or self.source_warehouse
 			stems = self._stems_for(row)
 			total_stems += stems
+			# Pick List Item does its own qty maths off this. Left at 0 it reads back a
+			# stock_qty of 0 no matter what is written above it.
+			factor = flt(stems) / flt(row.qty) if flt(row.qty) else 1
 			pick.append(
 				"locations",
 				{
@@ -136,15 +279,37 @@ class ShopifyAllocation(Document):
 					"qty": flt(row.qty),
 					"stock_qty": stems,
 					"uom": row.uom,
+					"conversion_factor": factor,
 					"actual_qty": flt(row.available_qty),
 				},
 			)
+			# Two fields for the one fact on that site: `custom_lgth` is the Link
+			# the pack list reads, `custom_length` the Data the printed sheet shows.
+			if row.get("stem_length"):
+				picked = pick.locations[-1]
+				if pick_has_link:
+					picked.custom_lgth = row.stem_length
+				if pick_has_data:
+					picked.custom_length = cstr(row.stem_length)
 		if not pick.locations:
 			frappe.throw(_("This allocation has no allocated quantity to pick."))
 
 		# Data field on that site, not an Int.
 		pick.custom_total_stems = cstr(total_stems)
 		pick.insert(ignore_permissions=True)
+
+		qr = _pick_list_qr(pick.name)
+		if qr:
+			# Keep the in-memory doc in step: the generator writes the field
+			# straight to the row, and submit() would otherwise save the stale
+			# empty value back over it.
+			pick.custom_qr_code = qr
+
+		# Submitting only flips docstatus. Order Pick List has an empty controller
+		# on that site - no stock movement, no eTIMS - which is why the farm's own
+		# pick-list creator submits it the same way. A draft pick list is one the
+		# packhouse will not pick, and Farm Pack List will not accept it either.
+		pick.submit()
 		return pick.name
 
 	@frappe.whitelist()
@@ -185,6 +350,7 @@ class ShopifyAllocation(Document):
 					"item_code": row.item_code,
 					"source_warehouse": row.custom_source_warehouse or row.warehouse,
 					"bunch_uom": row.uom,
+					"stem_length": row.get("custom_lgth"),
 					"bunch_qty": cint(flt(row.qty)),
 					"stock_qty": cint(flt(row.stock_qty)),
 					"custom_number_of_stems": cint(flt(row.stock_qty)),
@@ -198,6 +364,31 @@ class ShopifyAllocation(Document):
 
 		pack.insert(ignore_permissions=True)
 		return pack.name
+
+	def _auto_create_pick_list(self):
+		"""Raise the pick list as part of submitting, so packing can start at once.
+
+		Guarded rather than blocking. By the time this runs the reservation Stock
+		Entry is already posted, and letting a pick-list problem abort the submit
+		would roll that transfer back too — a worse outcome than an allocation
+		whose pick list has to be raised by hand. A site without the Upande
+		Tambuzi packing doctypes simply gets nothing.
+
+		Returns the pick list name, or None.
+		"""
+		if not frappe.db.exists("DocType", "Order Pick List"):
+			return None
+		if self._existing_pick_list():
+			return None
+
+		try:
+			return self.create_pick_list()
+		except Exception:
+			frappe.log_error(
+				title=f"Shopify Allocation {self.name}: pick list not raised",
+				message=frappe.get_traceback(),
+			)
+			return None
 
 	def _existing_pick_list(self, submitted_only=False):
 		filters = {"custom_shopify_allocation": self.name}
@@ -218,17 +409,47 @@ class ShopifyAllocation(Document):
 			)
 
 	def _stems_for(self, row):
-		"""Stems this line represents, from the Product Map's stems per box.
+		"""Stems this line represents.
 
-		Read through the item rather than the variant: the allocation records what is
-		being sent, and more than one variant can map to the same box item.
+		`row.qty` is in the line's own `uom` — whatever the allocation was made in —
+		and three shapes reach here:
+
+		- the item's own stock UOM, which is how the allocation board allocates
+		  (`Stems`), so the qty already IS stems;
+		- a bunch UOM like `Bunch (12)`, converted through the item's UOM
+		  Conversion Detail;
+		- a box item from an enabled `Shopify Product Map`, whose stems come from
+		  `stems_per_box` because a box is not a UOM of the flower at all.
+
+		Read the box through the item rather than the variant: the allocation records
+		what is being sent, and more than one variant can map to the same box item.
 		"""
 		if not row.item_code:
 			return 0
+
 		stems_per_box = frappe.db.get_value(
 			"Shopify Product Map", {"box_item": row.item_code, "enabled": 1}, "stems_per_box"
 		)
-		return cint(cint(stems_per_box) * flt(row.qty))
+		if cint(stems_per_box):
+			return cint(cint(stems_per_box) * flt(row.qty))
+
+		return cint(flt(row.qty) * self._stem_factor(row))
+
+	def _stem_factor(self, row):
+		"""Stems per unit of `row.uom`, from the item's UOM Conversion Detail.
+
+		Falls back to 1 — never 0 — when the line is already in the stock UOM or the
+		UOM is not declared on the item. A 0 here would silently zero the pick list
+		and everything packed from it.
+		"""
+		if not row.uom:
+			return 1
+		if row.uom == frappe.db.get_value("Item", row.item_code, "stock_uom"):
+			return 1
+		factor = frappe.db.get_value(
+			"UOM Conversion Detail", {"parent": row.item_code, "uom": row.uom}, "conversion_factor"
+		)
+		return flt(factor) or 1
 
 	# ------------------------------------------------------------------ internals
 
@@ -307,6 +528,8 @@ class ShopifyAllocation(Document):
 		if not company:
 			frappe.throw(_("Set a Company in Shopify Settings."))
 
+		detail_has_length = frappe.get_meta("Stock Entry Detail").has_field("custom_stem_length")
+
 		entry = frappe.new_doc("Stock Entry")
 		entry.stock_entry_type = "Material Transfer"
 		entry.purpose = "Material Transfer"
@@ -316,32 +539,197 @@ class ShopifyAllocation(Document):
 		for row in self.items:
 			if flt(row.qty) <= 0:
 				continue
-			entry.append(
-				"items",
-				{
-					"item_code": row.item_code,
-					"qty": flt(row.qty),
-					"s_warehouse": row.warehouse or self.source_warehouse,
-					"t_warehouse": self.reserve_warehouse,
-				},
-			)
+			line = {
+				"item_code": row.item_code,
+				"qty": flt(row.qty),
+				"s_warehouse": row.warehouse or self.source_warehouse,
+				"t_warehouse": self.reserve_warehouse,
+			}
+			if row.get("stem_length") and detail_has_length:
+				line["custom_stem_length"] = row.stem_length
+			entry.append("items", line)
 
 		if not entry.items:
 			frappe.throw(_("Every allocation line resolves to zero quantity."))
+
+		# Mark the reservation SOLD. The Tambuzi availability views read the flags
+		# on the Stock Entry (`custom_sold`, `custom_moved_to_shop`, ...) to decide
+		# what is still sellable, so stems committed to a Shopify order have to
+		# carry it or they keep showing up as available to sell again.
+		#
+		# Set before insert on purpose: the field is not allow_on_submit, so it
+		# cannot be written once the entry is submitted a line later.
+		if frappe.get_meta("Stock Entry").has_field("custom_sold"):
+			entry.custom_sold = 1
+
+		# The header length is only true when the whole entry is one length. A
+		# bouquet drawn from 53CM and 63CM stock has no single header length, and
+		# writing one of them there would misreport the other.
+		if frappe.get_meta("Stock Entry").has_field("custom_stem_length"):
+			used = {row.stem_length for row in self.items if flt(row.qty) > 0 and row.get("stem_length")}
+			if len(used) == 1:
+				entry.custom_stem_length = used.pop()
 
 		entry.insert(ignore_permissions=True)
 		entry.submit()
 		self.db_set("stock_entry", entry.name)
 
+	def _unwind_packing(self):
+		"""Take the whole packing trail down with the allocation.
+
+		Cancelling returns the stems to the shop they came from, so anything
+		downstream still claiming they are on their way out has to come down too -
+		otherwise a box label goes on being scanned onto a truck for stock that is
+		back on the shelf.
+
+		Unwound OUTSIDE-IN, in the same order the farm's own Sales Order cascade
+		uses, so each delete is already unblocked by the time it runs:
+		dispatch rows -> loading sheet rows -> box labels -> packing scan logs ->
+		pack list -> pick list.
+
+		A SUBMITTED pack list is cancelled rather than refused. That is a change
+		of policy, asked for deliberately: the alternative left an allocation that
+		could not be cancelled at all once packing had started.
+		"""
+		if not frappe.db.exists("DocType", "Order Pick List"):
+			return
+		pick_name = self._existing_pick_list()
+		if not pick_name:
+			return
+
+		packs = self._pack_lists(pick_name)
+		pack_names = [p.name for p in packs]
+		labels = self._box_labels(pick_name, pack_names)
+
+		# 1. dispatch rows booked against this pick list, and the per-box rows that
+		#    point at its labels - both block what follows.
+		self._delete_rows("Dispatch Form Item", {"custom_opl_id": pick_name})
+		if labels:
+			self._delete_rows("Box", {"box_id": ["in", labels]})
+
+		# 2. loading sheet rows carrying these boxes.
+		if pack_names:
+			self._delete_rows("Loading Sheet Item", {"farm_pack_list": ["in", pack_names]})
+		if labels:
+			self._delete_rows("Loading Sheet Item", {"box_label_link": ["in", labels]})
+
+		# 3. the labels themselves.
+		for label in labels:
+			frappe.delete_doc("Box Label", label, ignore_permissions=True, force=True)
+
+		# 4. scan logs, which link to the pack list and would block deleting it.
+		self._delete_rows("Packing Scan Log", {"opl": pick_name})
+		if pack_names:
+			self._delete_rows("Packing Scan Log", {"fpl": ["in", pack_names]})
+
+		# 5. pack lists: submitted cancelled, drafts removed.
+		for pack in packs:
+			if pack.docstatus == 1:
+				doc = frappe.get_doc("Farm Pack List", pack.name)
+				doc.flags.ignore_permissions = True
+				doc.cancel()
+			else:
+				frappe.delete_doc("Farm Pack List", pack.name, ignore_permissions=True, force=True)
+
+		# 6. and the pick list last.
+		pick = frappe.get_doc("Order Pick List", pick_name)
+		if pick.docstatus == 1:
+			pick.flags.ignore_permissions = True
+			pick.cancel()
+		elif pick.docstatus == 0:
+			# A draft pick list has no ledger behind it, so it is removed rather
+			# than left pointing at a cancelled allocation.
+			frappe.delete_doc("Order Pick List", pick_name, ignore_permissions=True, force=True)
+
+	def _pack_lists(self, pick_name):
+		if not frappe.db.exists("DocType", "Farm Pack List"):
+			return []
+		return frappe.get_all(
+			"Farm Pack List",
+			filters={"custom_order_pick_list": pick_name, "docstatus": ["<", 2]},
+			fields=["name", "docstatus"],
+		)
+
+	def _box_labels(self, pick_name, pack_names):
+		"""Labels reached both ways: older ones do not always carry the pack list."""
+		if not frappe.db.exists("DocType", "Box Label"):
+			return []
+		found = []
+		queries = [{"order_pick_list": pick_name}]
+		if pack_names:
+			queries.append({"farm_pack_list_link": ["in", pack_names]})
+		for query in queries:
+			for row in frappe.get_all("Box Label", filters=query, fields=["name"]):
+				if row.name not in found:
+					found.append(row.name)
+		return found
+
+	def _delete_rows(self, doctype, filters):
+		"""Remove child rows that would otherwise block the cancel.
+
+		Silent on a doctype this site does not have: the packing chain belongs to
+		the Upande Tambuzi app and only some of it exists elsewhere.
+		"""
+		if not frappe.db.exists("DocType", doctype):
+			return
+		for row in frappe.get_all(doctype, filters=filters, fields=["name"]):
+			frappe.delete_doc(doctype, row.name, ignore_permissions=True, force=True)
+
+	def _reopen_for_allocation(self):
+		"""Put the delivery back in the queue as a fresh draft.
+
+		Cancelling means the stems went back on the shelf and the order still has
+		to go out, so it belongs in the allocation list again. Raised through the
+		same generator every other allocation comes from, so the replacement is
+		built identically, and carried as an AMENDMENT of this one so the record of
+		what was cancelled survives.
+
+		Guarded: a cancel must not be lost because the replacement could not be
+		raised - a delivery nobody re-allocated is a far smaller problem than stock
+		stuck in the reserve warehouse.
+		"""
+		if not self.shopify_order:
+			return
+		try:
+			from ecommerce_integration.ecommerce_integration.doctype.shopify_settings.shopify_allocation_generator import (
+				create_allocations_for_order,
+			)
+
+			create_allocations_for_order(self.shopify_order)
+		except Exception:
+			frappe.log_error(
+				title=f"{self.name}: cancelled, but not re-opened for allocation",
+				message=frappe.get_traceback(),
+			)
+
 	def _cancel_reservation(self):
+		"""Return the reserved stems to the warehouse they came from.
+
+		Cancelling the Material Transfer is the reversal: ERPNext writes the
+		opposite ledger entries, so the stems go back from the reserve warehouse
+		to the shop they were taken from.
+		"""
 		if not self.stock_entry:
 			return
 		if not frappe.db.exists("Stock Entry", self.stock_entry):
 			return
 		entry = frappe.get_doc("Stock Entry", self.stock_entry)
-		if entry.docstatus == 1:
-			entry.flags.ignore_permissions = True
+		if entry.docstatus != 1:
+			return
+
+		entry.flags.ignore_permissions = True
+		try:
 			entry.cancel()
+		except Exception as e:
+			# This cancel IS the return of the stock, so a failure must not pass
+			# quietly and leave the allocation cancelled with the stems still
+			# sitting in the reserve warehouse. Typically the reserve warehouse no
+			# longer holds them because something downstream already moved them.
+			frappe.throw(
+				_("Could not return the stock to {0}: Stock Entry {1} would not cancel. {2}").format(
+					self.source_warehouse or "the shop", self.stock_entry, str(e)[:200]
+				)
+			)
 
 
 def ensure_packing_link_fields():
