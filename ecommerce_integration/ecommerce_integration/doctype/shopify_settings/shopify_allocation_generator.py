@@ -108,8 +108,10 @@ def create_allocations_for_order(order_name, settings=None):
 	created = []
 
 	for index in range(1, deliveries_total + 1):
-		allocation_name = f"SHOP-ALL-{order.name}-{index}"
-		if frappe.db.exists("Shopify Allocation", allocation_name):
+		# Only a STANDING allocation means this delivery is already covered. A
+		# cancelled one keeps its name for the record, and testing the name alone
+		# is what used to leave a cancelled delivery unallocatable for good.
+		if _standing_allocation(order.name, index):
 			continue
 
 		created.append(
@@ -120,6 +122,7 @@ def create_allocations_for_order(order_name, settings=None):
 				deliveries_total,
 				next_delivery_date(getdate(first_date), order.frequency, periods=index - 1),
 				required_stems,
+				amend_of=_superseded_allocation(order.name, index),
 			)
 		)
 
@@ -136,7 +139,65 @@ def create_allocations_for_order(order_name, settings=None):
 	return created
 
 
-def _new_allocation(order, settings, index, deliveries_total, delivery_date, required_stems):
+def _standing_allocation(order_name, index):
+	"""The allocation covering this delivery, if one is still in play.
+
+	Cancelled ones do not count: cancelling is what puts a delivery back in the
+	queue, so it has to read as uncovered afterwards.
+	"""
+	rows = frappe.get_all(
+		"Shopify Allocation",
+		filters={
+			"shopify_order": order_name,
+			"delivery_index": index,
+			"docstatus": ["<", 2],
+			"status": ["!=", "Cancelled"],
+		},
+		fields=["name"],
+		limit_page_length=1,
+	)
+	return rows[0].name if rows else None
+
+
+def _superseded_allocation(order_name, index):
+	"""The most recent cancelled allocation for this delivery, if any.
+
+	The replacement is raised as an AMENDMENT of it, which keeps the record of what
+	was cancelled and sidesteps the name the cancelled one still occupies.
+	"""
+	rows = frappe.get_all(
+		"Shopify Allocation",
+		filters={"shopify_order": order_name, "delivery_index": index, "docstatus": 2},
+		fields=["name"],
+		order_by="creation desc",
+		limit_page_length=1,
+	)
+	return rows[0].name if rows else None
+
+
+def _replacement_name(amend_of):
+	"""`<cancelled name>-<n>`, the first n that is free.
+
+	Frappe's own amend counter produces exactly this shape, and normally gets
+	there first; this is the fallback for a site whose Document Naming Settings
+	are set to Default Naming, where the amended document would otherwise collide
+	with the cancelled one it replaces.
+	"""
+	base = amend_of
+	# Only strip a counter this document actually carries, and decide that the way
+	# frappe does - by asking whether it is itself an amendment. The natural name
+	# ALWAYS ends in the delivery number, so treating a trailing digit as a
+	# counter would turn delivery 2 into delivery 1's slot.
+	if frappe.db.get_value("Shopify Allocation", amend_of, "amended_from"):
+		base = amend_of.rsplit("-", 1)[0]
+	for n in range(1, 100):
+		candidate = f"{base}-{n}"
+		if not frappe.db.exists("Shopify Allocation", candidate):
+			return candidate
+	return None
+
+
+def _new_allocation(order, settings, index, deliveries_total, delivery_date, required_stems, amend_of=None):
 	"""One draft allocation. Deliberately empty of lines: what fills a box depends on
 	what is actually available, which is the sales team's call, not a scheduler's."""
 	allocation = frappe.new_doc("Shopify Allocation")
@@ -150,6 +211,12 @@ def _new_allocation(order, settings, index, deliveries_total, delivery_date, req
 	allocation.status = "Draft"
 	allocation.source_warehouse = settings.default_source_warehouse
 	allocation.reserve_warehouse = settings.default_reserve_warehouse
+	if amend_of:
+		allocation.amended_from = amend_of
+		# Named up front as well: `_set_amended_name` only renames when the site's
+		# amend naming rule is a counter, and without a name of our own the format
+		# autoname would land straight back on the cancelled document's name.
+		allocation.name = _replacement_name(amend_of)
 	allocation.insert(ignore_permissions=True)
 	return allocation.name
 
