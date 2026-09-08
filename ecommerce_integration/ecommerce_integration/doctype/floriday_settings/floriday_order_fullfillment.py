@@ -211,11 +211,15 @@ def update_delivery_note_with_fulfillment(sales_order_name, fulfillment_id):
 
 		if delivery_notes:
 			delivery_note = frappe.get_doc("Delivery Note", delivery_notes[0].name)
-			current_remarks = delivery_note.remarks or ""
-			fulfillment_info = f"\n[Floriday Fulfillment ID: {fulfillment_id}]"
-			delivery_note.remarks = current_remarks + fulfillment_info
-			delivery_note.save()
-			frappe.db.commit()
+			fulfillment_info = f"[Floriday Fulfillment ID: {fulfillment_id}]"
+			if frappe.db.has_column("Delivery Note", "remarks"):
+				current_remarks = delivery_note.get("remarks") or ""
+				delivery_note.remarks = current_remarks + "\n" + fulfillment_info
+				delivery_note.save()
+				frappe.db.commit()
+			else:
+				# No `remarks` column on this version — keep the trail as a Comment.
+				delivery_note.add_comment("Comment", fulfillment_info)
 			safe_log(
 				f"Updated Delivery Note {delivery_note.name} with fulfillment ID",
 				"Delivery Note Update",
@@ -655,8 +659,16 @@ def stamp_fulfillment_on_sales_order(
 	after submission" *after* Floriday had already accepted the POST, turning a
 	successful fulfillment into a logged error.
 
+	`remarks` is standard on Sales Invoice and Delivery Note but NOT on Sales
+	Order in v16, so writing it unconditionally raised
+	(1054, "Unknown column 'remarks' in 'SET'") — again *after* the POST was
+	accepted. That rolled the stamp back, lost the idempotency key (every
+	`custom_floriday_fulfillment_order_id` stayed NULL) and reported a live
+	Floriday fulfillment as "<order> failed". Both writes are now schema-guarded
+	and the trail falls back to a Comment.
+
 	`custom_floriday_fulfillment_order_id` is the durable record and the
-	idempotency key; the remarks line is the human-readable trail.
+	idempotency key; the remarks/comment line is the human-readable trail.
 	"""
 	updates = {}
 	if frappe.db.has_column("Sales Order", "custom_floriday_fulfillment_order_id"):
@@ -669,15 +681,21 @@ def stamp_fulfillment_on_sales_order(
 		detail.append(f"Delivery GLN: {delivery_gln}")
 	if fulfillment_request_id:
 		detail.append(f"Fulfillment Request ID: {fulfillment_request_id}")
-	updates["remarks"] = ((sales_order.get("remarks") or "") + "\n" + "\n".join(detail)).strip()
+	trail = "\n".join(detail)
 
-	frappe.db.set_value("Sales Order", sales_order.name, updates, update_modified=False)
-	for field, value in updates.items():
-		sales_order.set(field, value)
+	has_remarks = frappe.db.has_column("Sales Order", "remarks")
+	if has_remarks:
+		updates["remarks"] = ((sales_order.get("remarks") or "") + "\n" + trail).strip()
+
+	if updates:
+		frappe.db.set_value("Sales Order", sales_order.name, updates, update_modified=False)
+		for field, value in updates.items():
+			sales_order.set(field, value)
+
+	if not has_remarks:
+		sales_order.add_comment("Comment", trail)
 
 	frappe.db.commit()  # nosemgrep: frappe-manual-commit
-
-	update_delivery_note_with_fulfillment(sales_order.name, fulfillment_id)
 
 
 def is_floriday_sales_order(doc):
