@@ -183,6 +183,12 @@ doc_events = {
 	# boxes are actually filled, so the allocation follows them rather than
 	# letting anyone declare an order packed the packhouse has not finished.
 	"Farm Pack List": {
+		# A Shopify pack list has no Sales Order, and that site names, fills and
+		# labels a pack list off one. Each of these is fenced on the pick list
+		# belonging to an allocation, so a farm pack list is untouched.
+		"autoname": "ecommerce_integration.ecommerce_integration.doctype.shopify_allocation.shopify_allocation.name_shopify_pack_list",
+		"before_insert": "ecommerce_integration.ecommerce_integration.doctype.shopify_allocation.shopify_allocation.apply_shopify_pack_list_defaults",
+		"before_save": "ecommerce_integration.ecommerce_integration.doctype.shopify_allocation.shopify_allocation.carry_stem_length_to_pack_list",
 		"on_update": "ecommerce_integration.ecommerce_integration.doctype.shopify_allocation.shopify_allocation.sync_allocation_packed_status",
 		"on_submit": "ecommerce_integration.ecommerce_integration.doctype.shopify_allocation.shopify_allocation.sync_allocation_packed_status",
 		"on_cancel": "ecommerce_integration.ecommerce_integration.doctype.shopify_allocation.shopify_allocation.sync_allocation_packed_status",

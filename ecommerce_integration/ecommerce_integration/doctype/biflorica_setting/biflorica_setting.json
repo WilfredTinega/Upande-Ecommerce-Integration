@@ -38,6 +38,7 @@
   "get_predeals",
   "approve_deal",
   "deals_filter_section",
+  "deals_period",
   "deals_from_date",
   "deals_to_date",
   "deals_mutation_date",
@@ -60,6 +61,7 @@
   "column_break_predeal",
   "predeal_enabled",
   "predeal_filter_section",
+  "predeal_period",
   "predeal_from_date",
   "predeal_to_date",
   "predeal_mutation_date",
@@ -279,6 +281,12 @@
    "label": "Filters"
   },
   {
+   "description": "Sets the time range it fetches the orders. Only deals from the last N hours are fetched; leave 0 to fetch everything.",
+   "fieldname": "deals_period",
+   "fieldtype": "Int",
+   "label": "Period(Hours)"
+  },
+  {
    "fieldname": "deals_from_date",
    "fieldtype": "Datetime",
    "label": "From Date"
@@ -395,6 +403,12 @@
    "fieldname": "predeal_filter_section",
    "fieldtype": "Section Break",
    "label": "Filters"
+  },
+  {
+   "description": "Sets the time range it fetches the orders. Only predeals from the last N hours are fetched; leave 0 to fetch everything.",
+   "fieldname": "predeal_period",
+   "fieldtype": "Int",
+   "label": "Period(Hours)"
   },
   {
    "fieldname": "predeal_from_date",
