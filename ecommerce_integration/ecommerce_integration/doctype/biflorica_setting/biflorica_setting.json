@@ -35,9 +35,9 @@
   "deals_cron_format",
   "column_break_deals",
   "deals_period",
+  "column_break_apet",
   "get_deals",
   "get_predeals",
-  "approve_deal",
   "deals_scheduler_section",
   "deals_last_run",
   "deals_column_break_runtime",
@@ -250,12 +250,7 @@
    "label": "Predeals"
   },
   {
-   "fieldname": "approve_deal",
-   "fieldtype": "Button",
-   "label": "Approve PreDeals"
-  },
-  {
-   "description": "Sets the time range it fetches the orders. Only deals from the last N hours are fetched; leave 0 to fetch everything.",
+   "description": "Sets the time range it fetches the orders.",
    "fieldname": "deals_period",
    "fieldtype": "Int",
    "label": "Period(Hours)"
@@ -309,7 +304,7 @@
    "label": "Enabled"
   },
   {
-   "description": "Sets the time range it fetches the orders. Only predeals from the last N hours are fetched; leave 0 to fetch everything.",
+   "description": "Sets the time range it fetches the orders.",
    "fieldname": "predeal_period",
    "fieldtype": "Int",
    "label": "Period(Hours)"
@@ -506,13 +501,17 @@
    "label": "Customer",
    "options": "Customer",
    "reqd": 1
+  },
+  {
+   "fieldname": "column_break_apet",
+   "fieldtype": "Column Break"
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "issingle": 1,
  "links": [],
- "modified": "2026-09-15 14:13:55.726756",
+ "modified": "2026-09-15 14:16:53.066862",
  "modified_by": "Administrator",
  "module": "Ecommerce Integration",
  "name": "Biflorica Setting",
