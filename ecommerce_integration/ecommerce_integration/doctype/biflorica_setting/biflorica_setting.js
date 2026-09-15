@@ -56,6 +56,27 @@ function toast(message, indicator) {
 	frappe.show_alert({ message: message, indicator: indicator || "blue" }, 7);
 }
 
+// `shared_reason` is set server-side when EVERY failure shares a reason, which
+// collapses to one line; per-deal reasons are still listed, deduplicated.
+function report_failures(failed, summary) {
+	if (!failed.length) {
+		return;
+	}
+	if (summary && summary.shared_reason) {
+		toast(__("All {0} failed: {1}", [failed.length, summary.shared_reason]), "red");
+		return;
+	}
+	const by_reason = {};
+	failed.forEach(function (f) {
+		const reason = f.reason || __("rejected");
+		(by_reason[reason] = by_reason[reason] || []).push(f.box_label || f.deal_id);
+	});
+	const lines = Object.keys(by_reason).map(function (reason) {
+		return `${by_reason[reason].join(", ")} (${reason})`;
+	});
+	toast(__("Failed: {0}", [lines.join("; ")]), "red");
+}
+
 function render_custom_fields_status(frm) {
 	const wrapper = frm.fields_dict.custom_fields_status_html;
 	if (!wrapper) return;
@@ -318,7 +339,19 @@ frappe.ui.form.on("Biflorica Setting", {
 							});
 							toast(__("Failed: {0}", [lines.join(", ")]), "red");
 						}
-						if (!ok.length && !failed.length) {
+						// Rows dropped before anything was sent: no price, no stock,
+						// no stem length.
+						const skipped = s.skipped_reasons || [];
+						skipped.forEach(function (group) {
+							toast(
+								__("Not offered — {0}: {1}", [
+									group.reason,
+									group.items.join(", "),
+								]),
+								"orange"
+							);
+						});
+						if (!ok.length && !failed.length && !skipped.length) {
 							toast(__("No offers processed"), "orange");
 						}
 					}
@@ -338,6 +371,7 @@ frappe.ui.form.on("Biflorica Setting", {
 			const created = s.created || [];
 			const existing = s.existing || [];
 			const failed = s.failed || [];
+			const incomplete = s.incomplete || [];
 
 			if (created.length) {
 				toast(__("Created: {0}", [created.map((c) => c.sales_order).join(", ")]), "green");
@@ -346,9 +380,16 @@ frappe.ui.form.on("Biflorica Setting", {
 				const lines = existing.map((e) => `${e.box_label} → ${e.sales_order}`);
 				toast(__("Already exists: {0}", [lines.join(", ")]), "orange");
 			}
+			if (incomplete.length) {
+				toast(
+					__("Set a Consignee before submitting: {0}", [
+						incomplete.map((c) => c.sales_order).join(", "),
+					]),
+					"orange"
+				);
+			}
 			if (failed.length) {
-				const lines = failed.map((f) => `${f.box_label} (${f.reason || "rejected"})`);
-				toast(__("Failed: {0}", [lines.join(", ")]), "red");
+				report_failures(failed, s);
 			}
 		});
 	},
@@ -365,6 +406,7 @@ frappe.ui.form.on("Biflorica Setting", {
 				const created = s.created || [];
 				const existing = s.existing || [];
 				const failed = s.failed || [];
+				const incomplete = s.incomplete || [];
 
 				if (created.length) {
 					toast(
@@ -378,9 +420,16 @@ frappe.ui.form.on("Biflorica Setting", {
 					const lines = existing.map((e) => `${e.box_label} → ${e.sales_order}`);
 					toast(__("Already exists: {0}", [lines.join(", ")]), "orange");
 				}
+				if (incomplete.length) {
+					toast(
+						__("Set a Consignee before submitting: {0}", [
+							incomplete.map((c) => c.sales_order).join(", "),
+						]),
+						"orange"
+					);
+				}
 				if (failed.length) {
-					const lines = failed.map((f) => `${f.box_label} (${f.reason || "rejected"})`);
-					toast(__("Failed: {0}", [lines.join(", ")]), "red");
+					report_failures(failed, s);
 				}
 			}
 		);

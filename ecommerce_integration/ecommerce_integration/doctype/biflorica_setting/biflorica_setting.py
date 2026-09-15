@@ -2,6 +2,7 @@
 # For license information, please see license.txt
 
 import json
+import re
 from datetime import datetime
 from urllib.parse import urljoin
 
@@ -9,7 +10,7 @@ import frappe
 import requests
 from frappe import _
 from frappe.model.document import Document
-from frappe.utils import flt
+from frappe.utils import flt, getdate
 
 from ecommerce_integration.ecommerce_integration.doctype.biflorica_setting.biflorica_customer_offer import (
 	get_biflorica_flower_variety,
@@ -116,11 +117,7 @@ class BifloricaSetting(Document):
 		base_url: DF.Data
 		create_orders_as_quotation: DF.Check
 		customer: DF.Link
-		deals_business_unit: DF.Link | None
-		deals_company: DF.Link | None
-		deals_consignee: DF.Link | None
 		deals_cron_format: DF.Data | None
-		deals_customer: DF.Link | None
 		deals_enabled: DF.Check
 		deals_event_frequency: DF.Literal[
 			"All",
@@ -135,15 +132,9 @@ class BifloricaSetting(Document):
 			"Monthly Long",
 			"Cron",
 		]
-		deals_farm: DF.Link | None
-		deals_from_date: DF.Datetime | None
 		deals_last_run: DF.Datetime | None
-		deals_limit: DF.Int
-		deals_mutation_date: DF.Datetime | None
 		deals_next_run: DF.Datetime | None
-		deals_offset: DF.Int
-		deals_source_warehouse: DF.Link | None
-		deals_to_date: DF.Datetime | None
+		deals_period: DF.Int
 		farm: DF.Data | None
 		live_offers: DF.Table[BifloricaOfferView]
 		offer_cron_format: DF.Data | None
@@ -180,13 +171,9 @@ class BifloricaSetting(Document):
 			"Monthly Long",
 			"Cron",
 		]
-		predeal_from_date: DF.Datetime | None
 		predeal_last_run: DF.Datetime | None
-		predeal_limit: DF.Int
-		predeal_mutation_date: DF.Datetime | None
 		predeal_next_run: DF.Datetime | None
-		predeal_offset: DF.Int
-		predeal_to_date: DF.Datetime | None
+		predeal_period: DF.Int
 		price_list: DF.Link | None
 		publish_enabled_stock_only: DF.Check
 		stock_items: DF.Table[BifloricaStockView]
@@ -688,7 +675,13 @@ def post_offers(
 		summary["success_count"] = len(success_varieties)
 		summary["failed_count"] = len(failed_varieties)
 
-		overall_success = bool(api_succeeded) and not failed_varieties
+		# Rows the builder dropped before anything was sent (no price, no stock,
+		# no stem length): without these the run reports "0 offers" and no reason.
+		summary["skipped_reasons"] = _group_skipped_items(summary.get("skipped_items"))
+
+		# Biflorica answers "Successfully posted 0 offers" to an empty payload;
+		# a green tick there hides an enabled variety that never got offered.
+		overall_success = bool(api_succeeded) and not failed_varieties and bool(success_varieties)
 
 		# One misconfigured setting rejects every offer for the same reason. Say it
 		# once, and say which setting — repeating an identical reason per variety
@@ -708,8 +701,14 @@ def post_offers(
 				message = summary["settings_hint"]
 			elif shared_reason:
 				message = f"All {len(failed_varieties)} offer(s) failed — {shared_reason}"
+		elif summary["skipped_reasons"]:
+			first = summary["skipped_reasons"][0]
+			message = f"Nothing offered — {first['reason'].lower()}: {', '.join(first['items'])}"
+			if len(summary["skipped_reasons"]) > 1:
+				message += f" (and {len(summary['skipped_reasons']) - 1} other reason(s))"
 		else:
-			message = api_response.get("message") or "No offers processed"
+			# result["message"] is set when the builder never reached the API at all.
+			message = api_response.get("message") or result.get("message") or "No offers processed"
 
 		return {
 			"success": overall_success,
@@ -729,6 +728,20 @@ _SETTINGS_FIELD_BY_ERROR_KEY = {
 	"farm": ("farm", "Farm"),
 	"platform": ("platform", "Platform"),
 }
+
+
+def _group_skipped_items(skipped_items):
+	"""[{reason, items, count}] — the builder's skipped rows grouped by reason."""
+	by_reason = {}
+	for row in skipped_items or []:
+		if not isinstance(row, dict):
+			continue
+		reason = row.get("reason") or "skipped"
+		label = row.get("item_name") or row.get("item_code") or "(unknown)"
+		debug = row.get("debug_info") or {}
+		length = debug.get("stem_length") or row.get("stem_length")
+		by_reason.setdefault(reason, []).append(f"{label} {length}" if length else label)
+	return [{"reason": reason, "items": items, "count": len(items)} for reason, items in by_reason.items()]
 
 
 def _shared_failure_reason(failed_varieties, posted_count):
@@ -830,8 +843,14 @@ def get_offers():
 
 		doc = _get_settings()
 		doc.set("live_offers", [])
+		expired = 0
 		for offer in offers:
 			if not isinstance(offer, dict):
+				continue
+			# Deal enrichment still reads the raw /offers list, so a deal struck
+			# against a since-ended offer keeps resolving its stem length.
+			if _offer_has_expired(offer):
+				expired += 1
 				continue
 			doc.append(
 				"live_offers",
@@ -860,10 +879,27 @@ def get_offers():
 		frappe.db.commit()
 
 		result["message"] = f"Loaded {len(doc.live_offers)} live offers"
+		if expired:
+			result["message"] += f" ({expired} expired offer(s) skipped)"
 		return result
 	except Exception as e:
 		frappe.log_error(str(e), "Biflorica Get Offers Error")
 		return {"success": False, "message": str(e)}
+
+
+def _offer_has_expired(offer):
+	"""True when the offer's `dateEnd` is behind us; no end date never expires."""
+	end = offer.get("dateEnd") or offer.get("date_end")
+	if not end:
+		return False
+	try:
+		ends = frappe.utils.get_datetime(end)
+	except Exception:
+		return False
+	# A bare date means the whole of that day, not midnight.
+	if (ends.hour, ends.minute, ends.second) == (0, 0, 0):
+		return getdate(ends) < getdate()
+	return ends < frappe.utils.now_datetime()
 
 
 def _to_iso_z(value):
@@ -931,14 +967,40 @@ def _frequency_window_from(settings, prefix):
 	return frappe.utils.add_to_date(frappe.utils.now_datetime(), **{f"{k}": -v for k, v in delta.items()})
 
 
+def _period_window_start(settings, prefix):
+	"""`now` minus the tab's Period (hours), or None when unset.
+
+	Mirrors Floriday Settings' own `period` field; zero keeps the old unbounded
+	behaviour so an upgrade changes nothing until the field is filled in.
+	"""
+	try:
+		hours = int(flt(getattr(settings, f"{prefix}_period", 0)))
+	except (TypeError, ValueError):
+		hours = 0
+	if hours <= 0:
+		return None
+	return frappe.utils.add_to_date(frappe.utils.now_datetime(), hours=-hours)
+
+
 def _build_deal_params(settings, prefix, window_from=None):
 	"""Build /deals query params.
 
-	When `window_from` is given (scheduled runs), it overrides the static
-	`{prefix}_from_date` filter so the fetch covers just the last interval.
+	Three ways to bound the window, most explicit first:
+
+	  1. `window_from` — a scheduled run asking for just the last interval.
+	  2. the static `{prefix}_from_date` filter, when an operator set one.
+	  3. `{prefix}_period`, in HOURS, rolling back from now.
+
+	With none of them Biflorica is asked for its entire history, which is what
+	the Period field exists to stop: every run re-fetched years of deals, and
+	almost all of them were already ordered or long past their delivery date.
 	"""
 	params = {}
-	from_value = window_from or getattr(settings, f"{prefix}_from_date", None)
+	from_value = (
+		window_from
+		or getattr(settings, f"{prefix}_from_date", None)
+		or _period_window_start(settings, prefix)
+	)
 	from_date = _to_iso_z(from_value)
 	to_date = _to_iso_z(getattr(settings, f"{prefix}_to_date", None))
 	mutation_date = _to_iso_z(getattr(settings, f"{prefix}_mutation_date", None))
@@ -1196,6 +1258,15 @@ def _find_or_create_named(doctype, value, name_fields):
 	`name_fields` are the candidate naming/title fields to match and populate,
 	in order — these masters are autonamed off their own Data field, and the
 	field is named differently on each (delivery_point, shipping_agent, ...).
+
+	Not every site's copy of these masters has such a field, though. "Shipping
+	Agent" and "Delivery Point" are shipped by BOTH upande_kaitet (autoname
+	`field:shipping_agent`) and upande_packhouse (autoname `prompt`, single
+	`description` field). On a packhouse-only site none of `name_fields` exists,
+	so the loop set nothing and `prompt` autonaming had no name to use — every
+	Floriday import died on "Please set the document name" while stamping the
+	logistics fields. `description` is therefore tried as a last label field, and
+	a `prompt`-autonamed doctype is named from `value` explicitly.
 	"""
 	if not value or not frappe.db.exists("DocType", doctype):
 		return None
@@ -1204,16 +1275,19 @@ def _find_or_create_named(doctype, value, name_fields):
 	if existing:
 		return existing
 	meta = frappe.get_meta(doctype)
-	for fieldname in name_fields:
+	candidates = [*name_fields, "description"]
+	for fieldname in candidates:
 		if meta.has_field(fieldname):
 			existing = frappe.db.get_value(doctype, {fieldname: value}, "name")
 			if existing:
 				return existing
 
 	doc = frappe.new_doc(doctype)
-	for fieldname in name_fields:
+	for fieldname in candidates:
 		if meta.has_field(fieldname):
 			doc.set(fieldname, value)
+	if (meta.autoname or "").lower() == "prompt":
+		doc.name = value
 	doc.flags.ignore_permissions = True
 	doc.insert(ignore_permissions=True)
 	return doc.name
@@ -1259,6 +1333,213 @@ def _customer_address_country(customer):
 	return frappe.db.get_value("Address", addr, "country") if addr else None
 
 
+def _delivery_date_has_passed(deal):
+	"""True when the deal's delivery date is behind us; today still passes.
+
+	ERPNext refuses a Sales Order dated after its own delivery date
+	(sales_order.validate_delivery_date), so such a deal cannot be ordered at all.
+	"""
+	delivery_date = deal.get("deliveryDate")
+	if not delivery_date:
+		return False
+	try:
+		return getdate(delivery_date) < getdate()
+	except Exception:
+		return False
+
+
+def _resolve_deal_spec(customer, item_code, stem_length, delivery_date=None):
+	"""(spec name, box item) for this customer/variety/length, or (None, None).
+
+	Matched on the spec's declared relationships, never on its name: customer +
+	an Approved Varieties row for the item + a Box Build row for the length.
+	Mono Box wins over Mixed Box (a deal is one variety), then most recent.
+	"""
+	if not customer or not item_code or not frappe.db.exists("DocType", "Specifications"):
+		return None, None
+
+	approved = frappe.get_all(
+		"Spec Approved Variety",
+		filters={"variety": item_code, "parenttype": "Specifications"},
+		pluck="parent",
+	)
+	if not approved:
+		return None, None
+
+	specs = frappe.get_all(
+		"Specifications",
+		filters={"name": ["in", approved], "customer": customer},
+		fields=["name", "box_assortment", "status", "valid_from", "expiry_date", "modified"],
+		order_by="modified desc",
+	)
+	on = getdate(delivery_date) if delivery_date else getdate()
+	candidates = []
+	for spec in specs:
+		if (spec.status or "Active") != "Active":
+			continue
+		if spec.valid_from and getdate(spec.valid_from) > on:
+			continue
+		if spec.expiry_date and getdate(spec.expiry_date) < on:
+			continue
+		box_items = frappe.get_all(
+			"Spec Box Item",
+			filters={"parent": spec.name, "parenttype": "Specifications", "length": stem_length},
+			fields=["bunch_type", "stems_per_bunch", "bunches_per_box", "length", "box_type", "pack_rate"],
+			order_by="idx asc",
+			limit=1,
+		)
+		if box_items:
+			candidates.append((spec, box_items[0]))
+
+	if not candidates:
+		return None, None
+	candidates.sort(key=lambda pair: pair[0].box_assortment == "Mixed Box")
+	spec, box_item = candidates[0]
+	return spec.name, box_item
+
+
+def _spec_detail_payload(spec_name):
+	"""Spec-level packing detail for a Sales Order line.
+
+	Delegates to upande_packhouse's own spec autofill so the floor gets exactly
+	what it expects; that app is optional, hence the guarded lookup.
+	"""
+	try:
+		detail_payload = frappe.get_attr("upande_packhouse.spec_autofill._detail_payload")
+	except Exception:
+		detail_payload = None
+
+	doc = frappe.get_cached_doc("Specifications", spec_name)
+	if detail_payload:
+		try:
+			return detail_payload(doc)
+		except Exception:
+			# Fall through to the spec's own fields: everything but the consumables.
+			pass
+	return {
+		"custom_cut_stage": doc.cut_stage or "",
+		"custom_defoliation_length": doc.defoliation_length or "",
+		"custom_consumables_charge": 1 if doc.consumables_charge else 0,
+		"custom_documentation_fee": 1 if doc.documentation_charge else 0,
+		"custom_certificate_of_origin": 1 if doc.certificate_of_origin else 0,
+	}
+
+
+def _set_line_field(line, soi_meta, fieldname, value):
+	"""Set `fieldname`, dropping a Link whose target record does not exist.
+
+	The spec and the line do not always point at the same master (box_type ->
+	Box Type vs Item), and an unresolvable Link kills the whole insert.
+	"""
+	if not soi_meta.has_field(fieldname) or value in (None, ""):
+		return
+	field = soi_meta.get_field(fieldname)
+	if field.fieldtype == "Link" and not frappe.db.exists(field.options, value):
+		return
+	line[fieldname] = value
+
+
+def _bunch_size(uom):
+	"""Stems in one bunch, off the UOM name: "Bunch (10)" -> 10.
+
+	Same reading as upande_packhouse's sales_order_engine._uom_factor; the two
+	must agree or the stem count changes when the packhouse touches the order.
+	"""
+	match = re.search(r"\((\d+)\)", uom or "")
+	return int(match.group(1)) if match else 0
+
+
+def _uom_conversion_factor(item_code, uom):
+	"""Stems per `uom`: the UOM name wins, the Item's own conversion is fallback.
+
+	The name wins because the packhouse reads only that; an Item Conversion that
+	disagrees would have it silently recount the order on first save.
+	"""
+	if not uom or frappe.db.get_value("Item", item_code, "stock_uom") == uom:
+		return 1
+	named = _bunch_size(uom)
+	if named:
+		return named
+	explicit = flt(
+		frappe.db.get_value("UOM Conversion Detail", {"parent": item_code, "uom": uom}, "conversion_factor")
+	)
+	return explicit or 1
+
+
+def _deal_selling_uom(item_code, stems_per_bunch=None):
+	"""(uom, stems per uom): the spec's bunch size if a UOM exists, else sales UOM."""
+	stock_uom = frappe.db.get_value("Item", item_code, "stock_uom") or "Stems"
+	if stems_per_bunch:
+		spec_uom = f"Bunch ({int(stems_per_bunch)})"
+		if frappe.db.exists("UOM", spec_uom):
+			return spec_uom, _uom_conversion_factor(item_code, spec_uom)
+	sales_uom = frappe.db.get_value("Item", item_code, "sales_uom") or stock_uom
+	return sales_uom, _uom_conversion_factor(item_code, sales_uom)
+
+
+def _apply_spec_to_line(line, soi_meta, spec_name, box_item):
+	"""Stamp the spec's packing instructions onto a line.
+
+	Quantities are untouched: the UOM was already settled from this spec's
+	bunch size before the line was built (_deal_selling_uom).
+	"""
+	mixed_bunch = 1 if box_item.get("bunch_type") == "Mixed Bunch" else 0
+	assortment = frappe.db.get_value("Specifications", spec_name, "box_assortment")
+	mixed_box = 1 if (assortment == "Mixed Box" and not mixed_bunch) else 0
+
+	_set_line_field(line, soi_meta, "custom_line", spec_name)
+	_set_line_field(line, soi_meta, "custom_box_type", box_item.get("box_type"))
+	if soi_meta.has_field("custom_mixed_box"):
+		line["custom_mixed_box"] = mixed_box
+	if soi_meta.has_field("custom_mixed_bunch"):
+		line["custom_mixed_bunch"] = mixed_bunch
+
+	# Packrate is a Link on straight boxes and a plain Int on mixed ones.
+	pack_rate = int(flt(box_item.get("pack_rate")))
+	if pack_rate:
+		if (mixed_box or mixed_bunch) and soi_meta.has_field("custom_packrate_mixed_box"):
+			line["custom_packrate_mixed_box"] = pack_rate
+		elif soi_meta.has_field("custom_packrate") and frappe.db.exists("Packrate", str(pack_rate)):
+			line["custom_packrate"] = str(pack_rate)
+
+	for fieldname, value in _spec_detail_payload(spec_name).items():
+		_set_line_field(line, soi_meta, fieldname, value)
+
+
+def _resolve_deals_consignee(settings, customer):
+	"""Configured `deals_consignee`, else the customer's own Consignee, else None.
+
+	A deal names no consignee. The master's link to the customer is the only
+	other source, and it is used only when UNAMBIGUOUS — one buyer can have
+	several consignees, and a guess on a draft reads as a reviewed value.
+	Covers both variants: a `customer` Link and a `customers` Table MultiSelect.
+	"""
+	configured = getattr(settings, "deals_consignee", None)
+	if configured:
+		return configured
+	if not customer or not frappe.db.exists("DocType", "Consignee"):
+		return None
+
+	if frappe.db.exists("Consignee", customer):
+		return customer
+
+	meta = frappe.get_meta("Consignee")
+	matches = []
+	if meta.has_field("customer"):
+		matches = [row.name for row in frappe.get_all("Consignee", filters={"customer": customer}, limit=2)]
+	if not matches and meta.has_field("customers"):
+		matches = [
+			row.parent
+			for row in frappe.get_all(
+				"Consignee Customer",
+				filters={"customer": customer, "parenttype": "Consignee"},
+				fields=["parent"],
+				limit=2,
+			)
+		]
+	return matches[0] if len(matches) == 1 else None
+
+
 def _resolve_deal_item(deal):
 	"""Resolve the deal variety to an ERPNext Item (item_name == variety)."""
 	variety = deal.get("variety")
@@ -1267,6 +1548,21 @@ def _resolve_deal_item(deal):
 	return frappe.db.get_value("Item", {"item_name": variety}, "name") or (
 		variety if frappe.db.exists("Item", variety) else None
 	)
+
+
+# upande_packhouse's roses pipeline keys off Business Unit == "Roses"; a deal
+# order without it is skipped by the packhouse entirely.
+DEALS_BUSINESS_UNIT_DEFAULT = "Roses"
+
+
+def _deals_business_unit(settings):
+	"""Business Unit for deal Sales Orders: the configured one, else Roses."""
+	configured = getattr(settings, "deals_business_unit", None)
+	if configured:
+		return configured
+	if frappe.db.exists("Business Unit", DEALS_BUSINESS_UNIT_DEFAULT):
+		return DEALS_BUSINESS_UNIT_DEFAULT
+	return None
 
 
 def _deals_company(settings):
@@ -1303,8 +1599,9 @@ def _create_sales_order_from_deal(
 	`kind` ("deal"/"predeal") namespaces the po_no key.
 
 	Returns (sales_order_name, status, error_message) where status is one of
-	"created" / "exists", and error_message is set (with name/status None) on
-	failure.
+	"created" / "created_incomplete" (created, but a mandatory consignee could
+	not be resolved, so submit will refuse it until one is set) / "exists", and
+	error_message is set (with name/status None) on failure.
 	"""
 	deal_id = str(deal.get("id") or "")
 	if not deal_id:
@@ -1348,10 +1645,11 @@ def _create_sales_order_from_deal(
 		)
 
 	so_meta = frappe.get_meta(target_dt)
+	business_unit = _deals_business_unit(settings)
 	if (
 		so_meta.has_field("custom_business_unit")
 		and so_meta.get_field("custom_business_unit").reqd
-		and not getattr(settings, "deals_business_unit", None)
+		and not business_unit
 	):
 		return None, None, "no Deals Business Unit configured on Biflorica Setting"
 	if (
@@ -1360,15 +1658,11 @@ def _create_sales_order_from_deal(
 		and not getattr(settings, "deals_farm", None)
 	):
 		return None, None, "no Deals Farm configured on Biflorica Setting"
-	# Same guard as above: the consignee is configured, never derived, so a
-	# mandatory custom_consignee with nothing set would otherwise surface as a raw
-	# "Consignee is required" from the insert rather than as missing configuration.
-	if (
-		so_meta.has_field("custom_consignee")
-		and so_meta.get_field("custom_consignee").reqd
-		and not getattr(settings, "deals_consignee", None)
-	):
-		return None, None, "no Deals Consignee configured on Biflorica Setting"
+	# An unresolvable consignee does not drop the deal: the draft is inserted
+	# without the mandatory check and submit re-imposes it.
+	consignee = _resolve_deals_consignee(settings, customer)
+	consignee_required = so_meta.has_field("custom_consignee") and so_meta.get_field("custom_consignee").reqd
+	needs_consignee = consignee_required and not consignee
 
 	item_code = _resolve_deal_item(deal)
 	if not item_code:
@@ -1418,19 +1712,24 @@ def _create_sales_order_from_deal(
 	# Keep the deal's negotiated price: don't let the price list / pricing rules
 	# override the per-stem rate we set below.
 	so.ignore_pricing_rule = 1
+	# The company default (Standard Selling, KES) leaves a USD order disagreeing
+	# with itself about its own currency. Rates stay pinned per line either way.
+	if so_meta.has_field("selling_price_list") and getattr(settings, "price_list", None):
+		so.selling_price_list = settings.price_list
 
 	delivery_date = deal.get("deliveryDate") or frappe.utils.nowdate()
 	delivery_point = _resolve_delivery_point(deal)
 	consignee_country = _customer_address_country(customer)
-	# Consignee is configured on Biflorica Setting (not derived from the customer).
-	consignee = getattr(settings, "deals_consignee", None)
 	customer_territory = frappe.db.get_value("Customer", customer, "territory")
 
 	# Mandatory integration fields on this site's Sales Order.
 	if so_meta.has_field("custom_sales_order_type"):
 		so.custom_sales_order_type = "Roses"
-	if so_meta.has_field("custom_business_unit"):
-		so.custom_business_unit = getattr(settings, "deals_business_unit", None)
+	# `business_unit` is the accounting dimension the packhouse reads;
+	# `custom_business_unit` is its legacy mirror.
+	for fieldname in ("business_unit", "custom_business_unit"):
+		if so_meta.has_field(fieldname) and business_unit:
+			so.set(fieldname, business_unit)
 	if so_meta.has_field("custom_farm"):
 		so.custom_farm = getattr(settings, "deals_farm", None)
 	if so_meta.has_field("custom_order_name"):
@@ -1479,22 +1778,6 @@ def _create_sales_order_from_deal(
 	if so_meta.has_field("po_no"):
 		so.po_no = deal_ref
 
-	# Sell in BUNCHES: qty = total_stems / bunch size, UOM = the item's sales
-	# (bunch) UOM. stock_qty stays = total_stems (bunches * conversion_factor),
-	# and the host app's amount override is rate(per stem) * stock_qty, so we keep
-	# the per-stem rate to land the correct deal total.
-	stock_uom = frappe.db.get_value("Item", item_code, "stock_uom") or "Stems"
-	sales_uom = frappe.db.get_value("Item", item_code, "sales_uom") or stock_uom
-	conversion_factor = 1
-	if sales_uom and sales_uom != stock_uom:
-		conversion_factor = (
-			flt(
-				frappe.db.get_value(
-					"UOM Conversion Detail", {"parent": item_code, "uom": sales_uom}, "conversion_factor"
-				)
-			)
-			or 1
-		)
 	# One entry per Sales Order line: (stems, per-stem rate, stem length label).
 	# With a breakdown that is one line per length; without one it is a single
 	# blended line, which is all the deal payload alone supports.
@@ -1513,17 +1796,16 @@ def _create_sales_order_from_deal(
 			stems=line_stems,
 			rate=line_rate,
 			size=line_size,
-			sales_uom=sales_uom,
-			conversion_factor=conversion_factor,
 			delivery_date=delivery_date,
 			box_label=box_label,
 			stem_length_map=stem_length_map,
 		)
 
 	so.flags.ignore_permissions = True
-	so.insert(ignore_permissions=True)
-	frappe.log_error(json.dumps(so.as_dict(), indent=2, default=str), f"Biflorica {target_dt} {so.name}")
-	return so.name, "created", None
+	# The mandatory check runs again on submit, so nothing reaches Biflorica or
+	# the packhouse without a consignee.
+	so.insert(ignore_permissions=True, ignore_mandatory=needs_consignee)
+	return so.name, ("created_incomplete" if needs_consignee else "created"), None
 
 
 def _append_deal_line(
@@ -1536,32 +1818,40 @@ def _append_deal_line(
 	stems,
 	rate,
 	size,
-	sales_uom,
-	conversion_factor,
 	delivery_date,
 	box_label,
 	stem_length_map,
 ):
 	"""Append one Sales Order line for `stems` of `item_code` at `rate` per stem."""
 	total_stems = stems
-	line_qty = (total_stems / conversion_factor) if conversion_factor else total_stems
+	soi_meta = frappe.get_meta(target_item_dt)
+
+	# Stem length first: the spec is matched on it, and its bunch size then
+	# decides what one selling unit is.
+	deal_len = size or deal.get("stem_length")
+	stem_length = _resolve_stem_length(deal_len, stem_length_map)
+	spec_name, box_item = _resolve_deal_spec(
+		so.get("customer") or so.get("party_name"), item_code, stem_length, delivery_date
+	)
+	line_uom, conversion_factor = _deal_selling_uom(item_code, (box_item or {}).get("stems_per_bunch"))
+
+	# qty counts BUNCHES, stock_qty counts stems, so the rate must be per bunch:
+	# a per-stem rate against a bunch qty divides the order total by the bunch.
 	line = {
 		"item_code": item_code,
-		"qty": line_qty,
-		"uom": sales_uom,
+		"qty": flt(total_stems) / conversion_factor,
+		"uom": line_uom,
 		"conversion_factor": conversion_factor,
-		# Rate is per STEM; pin both rate and price_list_rate so the price list
-		# can't override the deal's negotiated price.
-		"rate": rate,
-		"price_list_rate": rate,
+		# Pinned so the price list cannot override the negotiated price.
+		"rate": flt(rate) * conversion_factor,
+		"price_list_rate": flt(rate) * conversion_factor,
 	}
 	# delivery_date only exists on Sales Order Item; harmless to omit on Quotation.
-	if frappe.get_meta(target_item_dt).has_field("delivery_date"):
+	if soi_meta.has_field("delivery_date"):
 		line["delivery_date"] = delivery_date
 	if settings.warehouse:
 		line["warehouse"] = settings.warehouse
 	# Site Server Script requires a non-zero "Ordered Stems" on each line.
-	soi_meta = frappe.get_meta(target_item_dt)
 	if soi_meta.has_field("custom_ordered_quantity"):
 		line["custom_ordered_quantity"] = total_stems
 	if soi_meta.has_field("custom_ordered_stems"):
@@ -1570,15 +1860,21 @@ def _append_deal_line(
 	if soi_meta.has_field("custom_box_label") and box_label:
 		line["custom_box_label"] = box_label
 
+	# Transit truck: mandatory on a Roses line, and a deal names none. Its cargo
+	# is the freight handover, as on Truck Details / Drop Off / Shipping Agent.
+	_set_line_field(line, soi_meta, "custom_truck", (deal.get("cargo") or "").strip())
+
+	# Accounting dimensions repeat on the line; the GL picks them up from here.
+	if soi_meta.has_field("business_unit"):
+		_set_line_field(line, soi_meta, "business_unit", _deals_business_unit(settings))
+
 	# Source warehouse from Biflorica Setting config.
 	source_wh = getattr(settings, "deals_source_warehouse", None)
 	if soi_meta.has_field("custom_source_warehouse") and source_wh:
 		line["custom_source_warehouse"] = source_wh
 	# Stem length (Link to Stem Length) = the size of the deal's offer (captured
-	# at post time / read live). Resolved to a Stem Length record; left blank if
-	# the offer size is unavailable — no guessed fallback.
-	deal_len = size or deal.get("stem_length")
-	stem_length = _resolve_stem_length(deal_len, stem_length_map)
+	# at post time / read live). Left blank when the offer size is unavailable —
+	# no guessed fallback.
 	if soi_meta.has_field("custom_length") and stem_length:
 		line["custom_length"] = stem_length
 	# Packrate (Link to Packrate) from the deal packing; skip if no such record.
@@ -1589,6 +1885,11 @@ def _append_deal_line(
 	# multi-length deal belongs to the same boxes.
 	if soi_meta.has_field("custom_number_of_boxes"):
 		line["custom_number_of_boxes"] = int(flt(deal.get("quantity")))
+
+	# Applied last so the spec wins over the deal-derived packrate: `packing` is
+	# how the trade was priced, the spec is how the floor is told to pack.
+	if spec_name:
+		_apply_spec_to_line(line, soi_meta, spec_name, box_item)
 
 	so.append("items", line)
 
@@ -1617,13 +1918,18 @@ def get_deals(window_from: str | datetime | None = None):
 		breakdown_by_offer = _offer_breakdown_map(settings, live_offers)
 		stem_length_map = _stem_length_rounded_map()
 
-		created, approved, existing_deals, failed = [], [], [], []
+		created, approved, existing_deals, failed, incomplete = [], [], [], [], []
+		skipped_past = 0
 		for deal in deals:
 			if not isinstance(deal, dict):
 				continue
-			frappe.log_error(json.dumps(deal, indent=2, default=str), "Biflorica Deal")
 			deal_id = str(deal.get("id") or "")
 			label = _deal_box_label(deal) or deal_id
+
+			# Nothing to order against a delivery date that has already passed.
+			if _delivery_date_has_passed(deal):
+				skipped_past += 1
+				continue
 
 			if not deal.get("stem_length"):
 				offer_size = size_by_offer.get(str(deal.get("offer"))) or size_by_variety.get(
@@ -1643,6 +1949,9 @@ def get_deals(window_from: str | datetime | None = None):
 			except Exception as e:
 				frappe.db.rollback()
 				frappe.log_error(f"Deal {deal_id}: {e}", "Biflorica Deal -> SO Error")
+				# A msgprint validation stays queued for the client and would pop one
+				# modal per deal on top of the summary; `failed` carries the reason.
+				frappe.clear_messages()
 				err, so_name, status = str(e), None, None
 
 			if err:
@@ -1656,6 +1965,8 @@ def get_deals(window_from: str | datetime | None = None):
 
 			frappe.db.commit()
 			created.append({"deal_id": deal_id, "box_label": label, "sales_order": so_name})
+			if status == "created_incomplete":
+				incomplete.append({"deal_id": deal_id, "box_label": label, "sales_order": so_name})
 
 			# SO is in ERPNext -> approve the deal on Biflorica.
 			approve_res = _approve_deals(settings, [deal])
@@ -1679,19 +1990,32 @@ def get_deals(window_from: str | datetime | None = None):
 			"approved": approved,
 			"existing": existing_deals,
 			"failed": failed,
+			"incomplete": incomplete,
+			"skipped_past_count": skipped_past,
 			"created_count": len(created),
 			"approved_count": len(approved),
 			"existing_count": len(existing_deals),
 			"failed_count": len(failed),
+			"incomplete_count": len(incomplete),
 		}
+		# One missing setting fails every deal identically; say it once.
+		shared_reason = _shared_failure_reason(failed, len(deals) - skipped_past)
+		if shared_reason:
+			summary["shared_reason"] = shared_reason
 		parts = []
 		if created:
 			parts.append(f"Created {len(created)} Sales Order(s), approved {len(approved)} deal(s)")
+		if incomplete:
+			parts.append(f"{len(incomplete)} need a Consignee before submit")
 		if existing_deals:
 			parts.append(f"{len(existing_deals)} already exist")
 		if failed:
-			parts.append(f"{len(failed)} issue(s)")
-		message = "; ".join(parts) if parts else "No deals to process"
+			parts.append(
+				f"All {len(failed)} deal(s) failed — {shared_reason}"
+				if shared_reason
+				else f"{len(failed)} issue(s)"
+			)
+		message = "; ".join(parts) if parts else "No new orders"
 
 		return {"success": not failed, "message": message, "summary": summary, "data": result}
 	except Exception as e:
@@ -1729,13 +2053,18 @@ def get_predeals(window_from: str | datetime | None = None):
 		breakdown_by_offer = _offer_breakdown_map(settings, live_offers)
 		stem_length_map = _stem_length_rounded_map()
 
-		created, existing_deals, failed = [], [], []
+		created, existing_deals, failed, incomplete = [], [], [], []
+		skipped_past = 0
 		for deal in predeals:
 			if not isinstance(deal, dict):
 				continue
-			frappe.log_error(json.dumps(deal, indent=2, default=str), "Biflorica Predeal")
 			deal_id = str(deal.get("id") or "")
 			label = _deal_box_label(deal) or deal_id
+
+			# Nothing to order against a delivery date that has already passed.
+			if _delivery_date_has_passed(deal):
+				skipped_past += 1
+				continue
 
 			if not deal.get("stem_length"):
 				offer_size = size_by_offer.get(str(deal.get("offer"))) or size_by_variety.get(
@@ -1756,6 +2085,7 @@ def get_predeals(window_from: str | datetime | None = None):
 			except Exception as e:
 				frappe.db.rollback()
 				frappe.log_error(f"Predeal {deal_id}: {e}", "Biflorica Predeal -> SO Error")
+				frappe.clear_messages()
 				err, so_name, status = str(e), None, None
 
 			if err:
@@ -1767,6 +2097,8 @@ def get_predeals(window_from: str | datetime | None = None):
 
 			frappe.db.commit()
 			created.append({"deal_id": deal_id, "box_label": label, "sales_order": so_name})
+			if status == "created_incomplete":
+				incomplete.append({"deal_id": deal_id, "box_label": label, "sales_order": so_name})
 
 		frappe.db.set_single_value("Biflorica Setting", "predeal_last_run", frappe.utils.now_datetime())
 		frappe.db.commit()
@@ -1776,18 +2108,30 @@ def get_predeals(window_from: str | datetime | None = None):
 			"created": created,
 			"existing": existing_deals,
 			"failed": failed,
+			"incomplete": incomplete,
+			"skipped_past_count": skipped_past,
 			"created_count": len(created),
 			"existing_count": len(existing_deals),
 			"failed_count": len(failed),
+			"incomplete_count": len(incomplete),
 		}
+		shared_reason = _shared_failure_reason(failed, len(predeals) - skipped_past)
+		if shared_reason:
+			summary["shared_reason"] = shared_reason
 		parts = []
 		if created:
 			parts.append(f"Created {len(created)} draft Sales Order(s)")
+		if incomplete:
+			parts.append(f"{len(incomplete)} need a Consignee before submit")
 		if existing_deals:
 			parts.append(f"{len(existing_deals)} already exist")
 		if failed:
-			parts.append(f"{len(failed)} issue(s)")
-		message = "; ".join(parts) if parts else "No predeals to process"
+			parts.append(
+				f"All {len(failed)} predeal(s) failed — {shared_reason}"
+				if shared_reason
+				else f"{len(failed)} issue(s)"
+			)
+		message = "; ".join(parts) if parts else "No new orders"
 
 		return {"success": not failed, "message": message, "summary": summary, "data": result}
 	except Exception as e:

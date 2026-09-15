@@ -303,3 +303,144 @@ def set_enabled_stock(
 	# later row cannot roll back what is already enabled.
 	frappe.db.commit()  # nosemgrep: frappe-manual-commit
 	return {"updated": updated, "items": touched_items, "capped": capped}
+
+
+def _picker_price_list(settings_doctype=None):
+	"""(price list, customer) the picker prices against.
+
+	The channel's `price_list` wins, then the configured customer's default —
+	that is the list upande_packhouse prices the order on downstream.
+	"""
+	from ecommerce_integration.ecommerce_integration.utils import _resolve_price_list
+
+	customer = channel_setting("deals_customer", settings_doctype) or channel_setting(
+		"customer", settings_doctype
+	)
+	configured = channel_setting("price_list", settings_doctype)
+	if configured:
+		return configured, customer
+
+	if customer:
+		default_list = frappe.db.get_value("Customer", customer, "default_price_list")
+		if default_list:
+			return default_list, customer
+
+	return _resolve_price_list(settings_doctype), customer
+
+
+@frappe.whitelist()
+def get_stock_prices(items: str | list, settings_doctype: str | None = None):
+	"""Per-stem rate for each picker row, keyed "item_code::stem_length".
+
+	Uses the same resolver the offer builder prices with, so a row with no rate
+	here is exactly a row Biflorica will refuse to offer.
+	"""
+	from ecommerce_integration.ecommerce_integration.utils.post_harvest import (
+		canonical_stem_length,
+	)
+	from ecommerce_integration.ecommerce_integration.utils.stem_length import (
+		resolve_stem_length_rates,
+	)
+
+	if isinstance(items, str):
+		items = json.loads(items or "[]")
+	price_list, customer = _picker_price_list(settings_doctype)
+
+	rates_by_item = {}
+	out = {}
+	for row in items or []:
+		item_code = (row or {}).get("item_code")
+		if not item_code:
+			continue
+		if item_code not in rates_by_item:
+			rates_by_item[item_code] = resolve_stem_length_rates(
+				item_code, price_list=price_list, customer=customer
+			)
+		rates = rates_by_item[item_code]
+		stem_length = (row or {}).get("stem_length") or ""
+		canon = canonical_stem_length(stem_length)
+		rate = rates.get(canon) if canon else None
+		# Same single-length allowance the offer builder makes.
+		if rate is None and len(rates) == 1:
+			rate = next(iter(rates.values()))
+		if rate is not None:
+			out[f"{item_code}::{stem_length}"] = flt(rate)
+
+	return {
+		"price_list": price_list,
+		"customer": customer,
+		"currency": frappe.db.get_value("Price List", price_list, "currency") if price_list else None,
+		"rates": out,
+	}
+
+
+@frappe.whitelist()
+def set_stock_price(
+	item_code: str,
+	stem_length: str | None = None,
+	rate: str | float | None = None,
+	settings_doctype: str | None = None,
+):
+	"""Create or update the per-stem Item Price for one picker row.
+
+	The length is stored as the Stem Length DOCNAME; the master autonames
+	differently per site, so its label is not a valid Link value. ERPNext v16
+	leaves custom_length out of Item Price's duplicate check, so a second
+	per-length row is rejected — reported as such rather than as a save failure.
+	"""
+	from ecommerce_integration.ecommerce_integration.utils.post_harvest import (
+		resolve_stem_length_name,
+	)
+
+	rate = flt(rate)
+	if not item_code:
+		frappe.throw(frappe._("No item to price."))
+	if rate <= 0:
+		frappe.throw(frappe._("Enter a price greater than zero."))
+
+	price_list, _customer = _picker_price_list(settings_doctype)
+	if not price_list:
+		frappe.throw(frappe._("No selling Price List is configured for this channel."))
+
+	length_name = resolve_stem_length_name(stem_length) if stem_length else None
+	has_length_col = frappe.db.has_column("Item Price", "custom_length")
+
+	filters = {"item_code": item_code, "price_list": price_list}
+	if has_length_col and length_name:
+		filters["custom_length"] = length_name
+	existing = frappe.db.get_value("Item Price", filters, "name")
+
+	if existing:
+		doc = frappe.get_doc("Item Price", existing)
+		doc.price_list_rate = rate
+		doc.save(ignore_permissions=True)
+		action = "updated"
+	else:
+		doc = frappe.get_doc(
+			{
+				"doctype": "Item Price",
+				"item_code": item_code,
+				"price_list": price_list,
+				"selling": 1,
+				"price_list_rate": rate,
+			}
+		)
+		if has_length_col and length_name:
+			doc.custom_length = length_name
+		try:
+			doc.insert(ignore_permissions=True)
+		except frappe.exceptions.ValidationError as e:
+			if "ItemPriceDuplicateItem" in str(type(e)) or "already exists" in str(e).lower():
+				frappe.throw(
+					frappe._(
+						"{0} already has a price on {1} and this ERPNext version cannot hold a "
+						"second one per stem length. Price the lengths on the Stem Length master "
+						"instead, or edit the existing Item Price."
+					).format(item_code, price_list),
+					title=frappe._("Cannot add a per-length price"),
+				)
+			raise
+		action = "created"
+
+	frappe.db.commit()  # nosemgrep: frappe-manual-commit
+	return {"name": doc.name, "action": action, "rate": rate, "price_list": price_list}

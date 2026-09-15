@@ -34,22 +34,10 @@
   "deals_event_frequency",
   "deals_cron_format",
   "column_break_deals",
+  "deals_period",
+  "column_break_apet",
   "get_deals",
   "get_predeals",
-  "approve_deal",
-  "deals_filter_section",
-  "deals_from_date",
-  "deals_to_date",
-  "deals_mutation_date",
-  "deals_offset",
-  "deals_limit",
-  "column_break_dcjx",
-  "deals_company",
-  "deals_customer",
-  "deals_business_unit",
-  "deals_farm",
-  "deals_source_warehouse",
-  "deals_consignee",
   "deals_scheduler_section",
   "deals_last_run",
   "deals_column_break_runtime",
@@ -58,14 +46,8 @@
   "predeal_event_frequency",
   "predeal_cron_format",
   "column_break_predeal",
+  "predeal_period",
   "predeal_enabled",
-  "predeal_filter_section",
-  "predeal_from_date",
-  "predeal_to_date",
-  "predeal_mutation_date",
-  "column_break_predeal_filter",
-  "predeal_limit",
-  "predeal_offset",
   "predeal_scheduler_section",
   "predeal_last_run",
   "predeal_column_break_runtime",
@@ -268,80 +250,10 @@
    "label": "Predeals"
   },
   {
-   "fieldname": "approve_deal",
-   "fieldtype": "Button",
-   "label": "Approve PreDeals"
-  },
-  {
-   "collapsible": 1,
-   "fieldname": "deals_filter_section",
-   "fieldtype": "Section Break",
-   "label": "Filters"
-  },
-  {
-   "fieldname": "deals_from_date",
-   "fieldtype": "Datetime",
-   "label": "From Date"
-  },
-  {
-   "fieldname": "deals_to_date",
-   "fieldtype": "Datetime",
-   "label": "To Date"
-  },
-  {
-   "fieldname": "deals_mutation_date",
-   "fieldtype": "Datetime",
-   "label": "Mutation Date"
-  },
-  {
-   "fieldname": "deals_offset",
+   "description": "Sets the time range it fetches the orders.",
+   "fieldname": "deals_period",
    "fieldtype": "Int",
-   "label": "Offset"
-  },
-  {
-   "fieldname": "deals_limit",
-   "fieldtype": "Int",
-   "label": "Limit"
-  },
-  {
-   "fieldname": "column_break_dcjx",
-   "fieldtype": "Column Break"
-  },
-  {
-   "fieldname": "deals_company",
-   "fieldtype": "Link",
-   "label": "Deals Company",
-   "options": "Company"
-  },
-  {
-   "fieldname": "deals_customer",
-   "fieldtype": "Link",
-   "label": "Deals Customer",
-   "options": "Customer"
-  },
-  {
-   "fieldname": "deals_business_unit",
-   "fieldtype": "Link",
-   "label": "Deals Business Unit",
-   "options": "Business Unit"
-  },
-  {
-   "fieldname": "deals_farm",
-   "fieldtype": "Link",
-   "label": "Deals Farm",
-   "options": "Farm"
-  },
-  {
-   "fieldname": "deals_source_warehouse",
-   "fieldtype": "Link",
-   "label": "Deals Source Warehouse",
-   "options": "Warehouse"
-  },
-  {
-   "fieldname": "deals_consignee",
-   "fieldtype": "Link",
-   "label": "Deals Consignee",
-   "options": "Consignee"
+   "label": "Period(Hours)"
   },
   {
    "fieldname": "deals_scheduler_section",
@@ -392,41 +304,10 @@
    "label": "Enabled"
   },
   {
-   "fieldname": "predeal_filter_section",
-   "fieldtype": "Section Break",
-   "label": "Filters"
-  },
-  {
-   "fieldname": "predeal_from_date",
-   "fieldtype": "Datetime",
-   "label": "From Date"
-  },
-  {
-   "fieldname": "predeal_to_date",
-   "fieldtype": "Datetime",
-   "label": "To Date"
-  },
-  {
-   "description": "Only fetch predeals changed on/after this time (incremental sync)",
-   "fieldname": "predeal_mutation_date",
-   "fieldtype": "Datetime",
-   "label": "Mutation Date"
-  },
-  {
-   "fieldname": "column_break_predeal_filter",
-   "fieldtype": "Column Break"
-  },
-  {
-   "description": "How much to transfer at one time",
-   "fieldname": "predeal_limit",
+   "description": "Sets the time range it fetches the orders.",
+   "fieldname": "predeal_period",
    "fieldtype": "Int",
-   "label": "Limit"
-  },
-  {
-   "description": "Pagination offset for the predeals fetch",
-   "fieldname": "predeal_offset",
-   "fieldtype": "Int",
-   "label": "Offset"
+   "label": "Period(Hours)"
   },
   {
    "fieldname": "predeal_scheduler_section",
@@ -620,13 +501,17 @@
    "label": "Customer",
    "options": "Customer",
    "reqd": 1
+  },
+  {
+   "fieldname": "column_break_apet",
+   "fieldtype": "Column Break"
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "issingle": 1,
  "links": [],
- "modified": "2026-09-01 19:04:15.492015",
+ "modified": "2026-09-15 14:16:53.066862",
  "modified_by": "Administrator",
  "module": "Ecommerce Integration",
  "name": "Biflorica Setting",

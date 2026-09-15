@@ -25,6 +25,12 @@ ecommerce_integration.SET_ENABLED_STOCK =
 ecommerce_integration.GET_ENABLED_ROWS =
 	"ecommerce_integration.ecommerce_integration.utils.stock_picker.get_enabled_stock_rows";
 
+// Price column: per-stem rates for the listed rows, and the writer behind "Set".
+ecommerce_integration.GET_STOCK_PRICES =
+	"ecommerce_integration.ecommerce_integration.utils.stock_picker.get_stock_prices";
+ecommerce_integration.SET_STOCK_PRICE =
+	"ecommerce_integration.ecommerce_integration.utils.stock_picker.set_stock_price";
+
 ecommerce_integration.GET_CUSTOMER_WAREHOUSE_ROWS =
 	"ecommerce_integration.ecommerce_integration.utils.stock_picker.get_customer_warehouse_rows";
 
@@ -284,7 +290,10 @@ ecommerce_integration._render_shelf_rows = function (
 				</td>
 				<td>${frappe.utils.escape_html(r.item_name || r.item_code || "")}</td>
 				<td>${frappe.utils.escape_html(r.stem_length || "")}</td>
-				<td style="text-align:right;">${qty.toLocaleString()}</td>
+				<td style="text-align:right;white-space:nowrap;" class="shelf-price-cell"
+					data-price-key="${frappe.utils.escape_html((r.item_code || "") + "::" + (r.stem_length || ""))}">
+					<span class="text-muted">&mdash;</span>
+				</td>
 				<td style="width:130px;">
 					<input type="number" class="form-control input-sm shelf-row-qty"
 						min="0" step="${step}" max="${max_qty}" value="${default_qty}"
@@ -337,6 +346,7 @@ ecommerce_integration._render_shelf_rows = function (
 					<th>${__("Variety")}</th>
 					<th>${__("Stem Length")}</th>
 					<th style="text-align:right;">${is_wh ? __("Warehouse Qty") : __("Shelf Qty")}</th>
+					<th style="width:150px;text-align:right;white-space:nowrap;">${__("Price / Stem")}</th>
 					<th>${__("Qty to Enable")}</th>
 					<th style="width:150px;text-align:center;white-space:nowrap;">${__("Status")}</th>
 				</tr></thead>
@@ -374,8 +384,16 @@ ecommerce_integration._render_shelf_rows = function (
 		$root.find(".shelf-item-row:visible .shelf-row-check").prop("checked", checked);
 	});
 
+	// Fetched after the table renders: a pricing failure costs the column, not
+	// the picker.
+	ecommerce_integration._load_prices($root, channel, combined_rows);
+
 	$root.find(".shelf-enable-btn").on("click", () => {
 		ecommerce_integration._set_selected_enabled($root, frm, channel, fieldname, 1);
+	});
+
+	$root.on("click", ".shelf-price-btn", function () {
+		ecommerce_integration._prompt_price($(this).closest(".shelf-price-cell"), $root, channel);
 	});
 
 	$root.find(".shelf-disable-btn").on("click", () => {
@@ -471,6 +489,127 @@ ecommerce_integration._apply_shelf_filter = function ($root) {
 // when enabling, writes its stock_qty to the "Qty to Enable" value. The row
 // stays in the panel afterwards, carrying its `is-enabled` row class, so
 // the published qty can be edited or the row toggled again.
+// Channel name -> the Single its price list / customer live on.
+ecommerce_integration._settings_doctype_for = function (channel) {
+	if (channel === "Biflorica") return "Biflorica Setting";
+	if (channel === "Floriday") return "Floriday Settings";
+	return "";
+};
+
+// Fill the Price column, with a "Set" button on every unpriced row — those are
+// exactly the rows the offer builder refuses to send.
+ecommerce_integration._load_prices = function ($root, channel, rows) {
+	const $cells = $root.find(".shelf-price-cell");
+	if (!$cells.length) return;
+
+	const settings_doctype = ecommerce_integration._settings_doctype_for(channel);
+	frappe.call({
+		method: ecommerce_integration.GET_STOCK_PRICES,
+		args: {
+			items: (rows || []).map((r) => ({
+				item_code: r.item_code,
+				stem_length: r.stem_length || "",
+			})),
+			settings_doctype,
+		},
+		callback(r) {
+			const res = r.message || {};
+			$root.data("price-list", res.price_list || "");
+			$root.data("price-currency", res.currency || "");
+			$cells.each(function () {
+				ecommerce_integration._render_price_cell(
+					$(this),
+					(res.rates || {})[$(this).data("price-key")],
+					res
+				);
+			});
+		},
+		error() {
+			$cells.html('<span class="text-muted">&mdash;</span>');
+		},
+	});
+};
+
+ecommerce_integration._render_price_cell = function ($cell, rate, res) {
+	if (rate) {
+		const text = format_currency(rate, res.currency);
+		$cell.html(
+			`<span title="${frappe.utils.escape_html(
+				__("From {0}", [res.price_list || __("the price list")])
+			)}">${text}</span>
+			<button class="btn btn-xs btn-link shelf-price-btn" type="button"
+				style="padding:0 0 0 6px;">${__("Edit")}</button>`
+		);
+	} else {
+		$cell.html(
+			`<span style="color:var(--red-500);" title="${frappe.utils.escape_html(
+				__("No rate on {0} — this row cannot be offered", [
+					res.price_list || __("the price list"),
+				])
+			)}">${__("No price")}</span>
+			<button class="btn btn-xs btn-default shelf-price-btn" type="button"
+				style="padding:0 6px;margin-left:6px;">${__("Set")}</button>`
+		);
+	}
+	$cell.data("rate", rate || 0);
+};
+
+ecommerce_integration._prompt_price = function ($cell, $root, channel) {
+	const $tr = $cell.closest("tr.shelf-item-row");
+	const item_code = $tr.data("item-code");
+	const item_name = $tr.data("item-name") || item_code;
+	const stem_length = $tr.data("stem-length") || "";
+	const price_list = $root.data("price-list") || "";
+	const currency = $root.data("price-currency") || "";
+
+	const d = new frappe.ui.Dialog({
+		title: __("Price {0}", [stem_length ? `${item_name} ${stem_length}` : item_name]),
+		fields: [
+			{
+				fieldtype: "Currency",
+				fieldname: "rate",
+				label: __("Price per stem"),
+				reqd: 1,
+				default: $cell.data("rate") || null,
+				options: currency || undefined,
+				description: price_list
+					? __("Written to {0} for this stem length.", [price_list])
+					: __("Written to the channel's price list."),
+			},
+		],
+		primary_action_label: __("Save Price"),
+		primary_action(values) {
+			d.hide();
+			frappe.call({
+				method: ecommerce_integration.SET_STOCK_PRICE,
+				args: {
+					item_code,
+					stem_length,
+					rate: values.rate,
+					settings_doctype: ecommerce_integration._settings_doctype_for(channel),
+				},
+				freeze: true,
+				freeze_message: __("Saving price"),
+				callback(r) {
+					if (!r.message) return;
+					frappe.show_alert(
+						{
+							message: __("Price {0} for {1}", [r.message.action, item_name]),
+							indicator: "green",
+						},
+						5
+					);
+					ecommerce_integration._render_price_cell($cell, r.message.rate, {
+						price_list: r.message.price_list,
+						currency,
+					});
+				},
+			});
+		},
+	});
+	d.show();
+};
+
 ecommerce_integration._set_selected_enabled = function ($root, frm, channel, fieldname, enable) {
 	const combined_rows = $root.data("combined-rows") || [];
 	const items = [];

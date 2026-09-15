@@ -54,7 +54,11 @@ def log_short(msg, title="Floriday", is_error=True):
 	if len(msg) > 135:
 		msg = msg[:132] + "..."
 	if is_error:
-		frappe.log_error(msg, title)
+		# frappe.log_error's signature is (title, message), and it only auto-swaps
+		# them when the title contains a newline. Passing (msg, title) positionally
+		# therefore filed every one of these under Error Log.method with the title
+		# in .error — which is why filtering the log on "Floriday" missed them.
+		frappe.log_error(title=title, message=msg)
 	else:
 		_logger.info(f"[{title}] {msg}")
 
@@ -396,7 +400,18 @@ def ensure_delivery_point_for_gln(gln_code, settings, address_fallback=None):
 	# 4. Create the Delivery Point
 	try:
 		doc = frappe.new_doc("Delivery Point")
-		doc.delivery_point = dp_name
+		dp_meta = frappe.get_meta("Delivery Point")
+		# Two apps ship a "Delivery Point": upande_kaitet's is autonamed
+		# `field:delivery_point`, upande_packhouse's is autonamed `prompt` and has no
+		# `delivery_point` field at all (its label field is `description`). Setting
+		# only `delivery_point` left the packhouse shape with nothing set AND no name,
+		# so insert() died on "Please set the document name" — see the same fix in
+		# biflorica_setting._find_or_create_named.
+		for fieldname in ("delivery_point", "description", "title"):
+			if dp_meta.has_field(fieldname):
+				doc.set(fieldname, dp_name)
+		if (dp_meta.autoname or "").lower() == "prompt":
+			doc.name = dp_name
 
 		if has_gln_field:
 			doc.custom_floriday_delivery_point_id = gln_code
@@ -1384,9 +1399,15 @@ def get_erpnext_item_code(floriday_trade_item_id):
 		if item_code:
 			return item_code
 
-		item = frappe.db.get_value("Item", {"floriday_trade_item_id": floriday_trade_item_id}, "name")
-		if item:
-			return item
+		# Legacy route: `Item.floriday_trade_item_id` is a Custom Field shipped only by
+		# upande_kaitet. On a site without that app (kaitet-group runs upande_packhouse
+		# instead) the column does not exist, and querying it raised MySQL 1054 —
+		# reporting "Unknown column 'floriday_trade_item_id'" for what is really a
+		# missing trade-item mapping, on every order for an unmapped trade item.
+		if frappe.db.has_column("Item", "floriday_trade_item_id"):
+			item = frappe.db.get_value("Item", {"floriday_trade_item_id": floriday_trade_item_id}, "name")
+			if item:
+				return item
 
 		frappe.throw(f"No item mapping for {floriday_trade_item_id}")
 	except Exception as e:

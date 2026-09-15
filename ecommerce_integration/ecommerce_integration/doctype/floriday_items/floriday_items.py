@@ -100,6 +100,18 @@ class FloridayItems(Document):
 				latest_rate = _stem_length_rates_from_item_prices(self.item_code, price_list)
 
 		existing = {row.stem_length: row for row in self.table_ppvq if row.stem_length}
+		# A row's `trade_item_id` is the ONLY link between a Floriday trade item and
+		# our item, and Floriday batches/supply lines already published under it stay
+		# live and sellable. Dropping the row when its price disappears therefore
+		# breaks incoming orders for stock that is still on sale, and re-adding it
+		# later appends a blank row that `update_trade_item_ids` can only refill if
+		# Floriday's (name, length-grade) key still matches. So ids are carried across
+		# the refresh, and a row that holds one is never pruned.
+		known_ids = {
+			row.stem_length: row.trade_item_id
+			for row in self.table_ppvq
+			if row.stem_length and row.trade_item_id
+		}
 
 		for stem_length, rate in latest_rate.items():
 			if stem_length in existing:
@@ -107,12 +119,16 @@ class FloridayItems(Document):
 			else:
 				self.append(
 					"table_ppvq",
-					{"stem_length": stem_length, "rate": rate},
+					{
+						"stem_length": stem_length,
+						"rate": rate,
+						"trade_item_id": known_ids.get(stem_length),
+					},
 				)
 
 		self.set(
 			"table_ppvq",
-			[row for row in self.table_ppvq if row.stem_length in latest_rate],
+			[row for row in self.table_ppvq if row.stem_length in latest_rate or row.trade_item_id],
 		)
 
 		self.save()

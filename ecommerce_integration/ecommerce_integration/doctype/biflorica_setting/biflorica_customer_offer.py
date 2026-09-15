@@ -612,6 +612,9 @@ def prepare_offers_payload_with_details(items_data, settings, box_type=None, pac
 			{
 				"item_code": item.get("item_code"),
 				"item_name": item.get("item_name"),
+				# A variety is enabled per length, so the length is what tells the
+				# operator which row to go and fix.
+				"stem_length": item.get("stem_length"),
 				"status": "skipped",
 				"reason": reason,
 				"payload": None,
@@ -639,18 +642,21 @@ def prepare_offers_payload_with_details(items_data, settings, box_type=None, pac
 			stem_length = get_stem_length_from_stock_entry(item_code, settings.warehouse)
 
 		if price_per_stem <= 0:
+			# Said plainly: this is the single most common reason an enabled
+			# variety never reaches Biflorica, and the operator's fix is one
+			# Item Price row.
 			skip(
 				item,
-				"Zero price - no rate in Item Price or the post-harvest Stem Length master",
+				"No price set",
 				price_per_stem=price_per_stem,
 				quantity=quantity,
 			)
 			continue
 		if quantity <= 0:
-			skip(item, "Zero quantity", quantity=quantity)
+			skip(item, "No stock available", quantity=quantity)
 			continue
 		if not stem_length:
-			skip(item, "No stem length could be resolved for this row")
+			skip(item, "No stem length set")
 			continue
 
 		flower_type = get_biflorica_flower_type(item)
