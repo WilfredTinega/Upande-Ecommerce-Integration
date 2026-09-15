@@ -87,109 +87,40 @@ class BifloricaSetting(Document):
 	from typing import TYPE_CHECKING
 
 	if TYPE_CHECKING:
+		from ecommerce_integration.ecommerce_integration.doctype.biflorica_offer_view.biflorica_offer_view import BifloricaOfferView
+		from ecommerce_integration.ecommerce_integration.doctype.biflorica_stock_view.biflorica_stock_view import BifloricaStockView
 		from frappe.types import DF
-
-		from ecommerce_integration.ecommerce_integration.doctype.biflorica_offer_view.biflorica_offer_view import (
-			BifloricaOfferView,
-		)
-		from ecommerce_integration.ecommerce_integration.doctype.biflorica_stock_view.biflorica_stock_view import (
-			BifloricaStockView,
-		)
 
 		access_token: DF.LongText | None
 		at_cron_format: DF.Data | None
 		at_enabled: DF.Check
-		at_event_frequency: DF.Literal[
-			"All",
-			"Hourly",
-			"Daily",
-			"Weekly",
-			"Monthly",
-			"Yearly",
-			"Hourly Long",
-			"Daily Long",
-			"Weekly Long",
-			"Monthly Long",
-			"Cron",
-		]
+		at_event_frequency: DF.Literal["All", "Hourly", "Daily", "Weekly", "Monthly", "Yearly", "Hourly Long", "Daily Long", "Weekly Long", "Monthly Long", "Cron"]
 		at_last_run: DF.Datetime | None
 		at_next_run: DF.Datetime | None
 		base_url: DF.Data
 		create_orders_as_quotation: DF.Check
 		customer: DF.Link
-		deals_business_unit: DF.Link | None
-		deals_company: DF.Link | None
-		deals_consignee: DF.Link | None
 		deals_cron_format: DF.Data | None
-		deals_customer: DF.Link | None
 		deals_enabled: DF.Check
-		deals_event_frequency: DF.Literal[
-			"All",
-			"Hourly",
-			"Daily",
-			"Weekly",
-			"Monthly",
-			"Yearly",
-			"Hourly Long",
-			"Daily Long",
-			"Weekly Long",
-			"Monthly Long",
-			"Cron",
-		]
-		deals_farm: DF.Link | None
-		deals_from_date: DF.Datetime | None
+		deals_event_frequency: DF.Literal["All", "Hourly", "Daily", "Weekly", "Monthly", "Yearly", "Hourly Long", "Daily Long", "Weekly Long", "Monthly Long", "Cron"]
 		deals_last_run: DF.Datetime | None
-		deals_limit: DF.Int
-		deals_mutation_date: DF.Datetime | None
 		deals_next_run: DF.Datetime | None
-		deals_offset: DF.Int
 		deals_period: DF.Int
-		deals_source_warehouse: DF.Link | None
-		deals_to_date: DF.Datetime | None
 		farm: DF.Data | None
 		live_offers: DF.Table[BifloricaOfferView]
 		offer_cron_format: DF.Data | None
 		offer_enabled: DF.Check
-		offer_event_frequency: DF.Literal[
-			"All",
-			"Hourly",
-			"Daily",
-			"Weekly",
-			"Monthly",
-			"Yearly",
-			"Hourly Long",
-			"Daily Long",
-			"Weekly Long",
-			"Monthly Long",
-			"Cron",
-		]
+		offer_event_frequency: DF.Literal["All", "Hourly", "Daily", "Weekly", "Monthly", "Yearly", "Hourly Long", "Daily Long", "Weekly Long", "Monthly Long", "Cron"]
 		offer_last_run: DF.Datetime | None
 		offer_next_run: DF.Datetime | None
 		password: DF.Password
 		platform: DF.Data
 		predeal_cron_format: DF.Data | None
 		predeal_enabled: DF.Check
-		predeal_event_frequency: DF.Literal[
-			"All",
-			"Hourly",
-			"Daily",
-			"Weekly",
-			"Monthly",
-			"Yearly",
-			"Hourly Long",
-			"Daily Long",
-			"Weekly Long",
-			"Monthly Long",
-			"Cron",
-		]
-		predeal_from_date: DF.Datetime | None
+		predeal_event_frequency: DF.Literal["All", "Hourly", "Daily", "Weekly", "Monthly", "Yearly", "Hourly Long", "Daily Long", "Weekly Long", "Monthly Long", "Cron"]
 		predeal_last_run: DF.Datetime | None
-		predeal_limit: DF.Int
-		predeal_mutation_date: DF.Datetime | None
 		predeal_next_run: DF.Datetime | None
-		predeal_offset: DF.Int
 		predeal_period: DF.Int
-		predeal_to_date: DF.Datetime | None
 		price_list: DF.Link | None
 		publish_enabled_stock_only: DF.Check
 		stock_items: DF.Table[BifloricaStockView]
