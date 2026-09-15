@@ -456,6 +456,9 @@ class ShopifyAllocation(Document):
 			uom, per_bunch = bunch_uom_for(row.item_code)
 			bunches = self._bunches_for(row, stems, uom, per_bunch)
 			total_stems += stems
+			# Pick List Item does its own qty maths off this. Left at 0 it reads back a
+			# stock_qty of 0 no matter what is written above it.
+			factor = flt(stems) / flt(row.qty) if flt(row.qty) else 1
 			pick.append(
 				"locations",
 				{
