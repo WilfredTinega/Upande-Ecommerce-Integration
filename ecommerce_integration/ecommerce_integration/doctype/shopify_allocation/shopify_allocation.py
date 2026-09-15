@@ -1,12 +1,81 @@
 # Copyright (c) 2026, Upande LTD and contributors
 # For license information, please see license.txt
 
+import re
+
 import frappe
 from frappe import _
 from frappe.model.document import Document
 from frappe.utils import cint, cstr, flt, get_url, nowdate
 
 STEM_LENGTH = "Stem Length"
+
+# The packhouse's own bunch UOMs. A grading label carries this string verbatim and
+# the pick list has to match it character for character, because the scanner
+# compares `Pick List Item.uom` to it as plain text.
+BUNCH_UOM_PATTERN = re.compile(r"\((\d+)\)")
+
+
+def _stems_in_uom_name(uom):
+	"""Stems a UOM name declares, e.g. `Bunch (12)` -> 12, else 0.
+
+	The packing scanner reads the count out of the NAME rather than out of the
+	item's UOM Conversion Detail, so this is the number that decides whether a
+	pack list ever reaches 100%.
+	"""
+	if not uom:
+		return 0
+	found = BUNCH_UOM_PATTERN.search(cstr(uom))
+	return cint(found.group(1)) if found else 0
+
+
+def bunch_uom_for(item_code):
+	"""`(uom, stems_per_bunch)` - how the packhouse handles this variety.
+
+	The allocation stores stems, because that is how availability is counted. The
+	packhouse handles BUNCHES, and the scanner matches a scanned label's bunch
+	size against `Pick List Item.uom` as a literal string. So a pick list written
+	in the stock UOM ("Stems") matches no label that will ever be scanned at it -
+	which is exactly why Shopify pick lists could not be packed. Write the item's
+	own `sales_uom`, the same UOM the allocation board counts bunches in.
+
+	An item with no bunch UOM falls back to its stock UOM at one stem each, so a
+	variety that genuinely sells by the stem stays packable rather than becoming
+	unpackable.
+
+	Raises when the item's declared conversion factor and its UOM name disagree:
+	the pick list would then be written with one number and credited by the
+	scanner with the other, and the pack list could never reach 100%.
+	"""
+	stock_uom, sales_uom = frappe.db.get_value("Item", item_code, ["stock_uom", "sales_uom"]) or (
+		None,
+		None,
+	)
+	if not sales_uom or sales_uom == stock_uom:
+		return stock_uom, 1
+
+	named = _stems_in_uom_name(sales_uom)
+	declared = cint(
+		flt(
+			frappe.db.get_value(
+				"UOM Conversion Detail", {"parent": item_code, "uom": sales_uom}, "conversion_factor"
+			)
+		)
+	)
+	if named and declared and named != declared:
+		frappe.throw(
+			_(
+				"{0} is declared as {1} stems per {2} but its name says {3}. "
+				"The packing scanner counts the name, so these have to agree."
+			).format(item_code, declared, sales_uom, named)
+		)
+
+	stems = named or declared
+	if stems < 1:
+		# A bunch UOM nobody can count is worse than no bunch UOM: it would be
+		# written on the pick list and then credited as zero stems per scan.
+		return stock_uom, 1
+	return sales_uom, stems
 
 
 def _pick_list_qr(pick_name):
@@ -69,6 +138,111 @@ def _packing_state(allocation):
 		"percent": percent,
 		"complete": bool(cint(pack.custom_complete) or percent >= 100),
 	}
+
+
+def _allocation_of_pack_list(doc):
+	"""The Shopify Allocation a Farm Pack List belongs to, or None.
+
+	Every hook below is fenced on this: a farm pack list must behave exactly as it
+	did before, so anything that cannot be traced back to an allocation is left
+	completely alone.
+	"""
+	pick = doc.get("custom_order_pick_list")
+	if not pick:
+		return None
+	allocation = frappe.db.get_value("Order Pick List", pick, "custom_shopify_allocation")
+	if not allocation or not frappe.db.exists("Shopify Allocation", allocation):
+		return None
+	return allocation
+
+
+def name_shopify_pack_list(doc, method=None):
+	"""Name a Shopify pack list without a Sales Order.
+
+	`Farm Pack List` is named on that site by a Property Setter,
+	`format: {custom_abbreviation}-{custom_sales_order}`, and a Shopify pack list
+	has no Sales Order - so every one of them would be named `BUR-` and the second
+	would collide, inside the packing scanner, on the packhouse's second scan.
+
+	Hooked on `autoname` rather than `before_naming` deliberately: `set_new_name`
+	blanks `doc.name` after `before_naming` runs and before `autoname`, so a name
+	set any earlier is thrown away. Setting it here also stops the format being
+	applied at all, while a farm pack list - where this returns without setting a
+	name - still goes through that format exactly as before.
+	"""
+	if doc.get("name") or doc.get("custom_sales_order"):
+		return
+	allocation = _allocation_of_pack_list(doc)
+	if not allocation:
+		return
+
+	order, index = frappe.db.get_value("Shopify Allocation", allocation, ["shopify_order", "delivery_index"])
+	abbr = cstr(doc.get("custom_abbreviation") or "").strip()
+	stem = "-".join(part for part in (abbr, cstr(order or allocation), cstr(cint(index) or 1)) if part)
+	doc.name = stem
+
+
+def apply_shopify_pack_list_defaults(doc, method=None):
+	"""Fill what a Shopify pack list cannot fetch from a Sales Order.
+
+	`custom_customer`, `custom_customer_address`, `custom_comment` and
+	`custom_currency` are all `fetch_from` a Sales Order on that site. With no
+	Sales Order the fetch never runs - frappe skips a link field that is empty -
+	so they stay blank and the printed pack list and box label say nothing about
+	who the flowers are for. They are written from the allocation instead.
+
+	`custom_farm` and `custom_abbreviation` come off the source warehouse, which is
+	how the scanner already derives the farm.
+	"""
+	allocation = _allocation_of_pack_list(doc)
+	if not allocation:
+		return
+
+	alloc = frappe.get_doc("Shopify Allocation", allocation)
+	if not doc.get("custom_customer"):
+		# The buying Customer, not the recipient. This lands on `Box Label.customer`,
+		# which is a Link - a gift recipient is not a Customer record and writing
+		# their name here fails link validation and stops the label being made. The
+		# recipient travels as the consignee, which is what a consignee is.
+		doc.custom_customer = cstr(alloc.customer)
+	if not doc.get("custom_customer_address"):
+		who = cstr(alloc.recipient_name or "").strip()
+		where = cstr(alloc.shipping_address or "").strip()
+		doc.custom_customer_address = " - ".join(p for p in (who, where) if p)
+	if not doc.get("custom_comment"):
+		doc.custom_comment = alloc.delivery_label()
+
+	if not doc.get("custom_farm"):
+		warehouse = alloc.source_warehouse or ""
+		farm = warehouse.split(" ")[0] if warehouse else ""
+		if farm and frappe.db.exists("Farm", farm):
+			doc.custom_farm = farm
+	if doc.get("custom_farm") and not doc.get("custom_abbreviation"):
+		doc.custom_abbreviation = frappe.db.get_value("Farm", doc.custom_farm, "abbreviation")
+
+
+def carry_stem_length_to_pack_list(doc, method=None):
+	"""Copy each row's stem length down from the pick list when it is missing.
+
+	The packhouse packs TO a length, and a row that lost it cannot be graded
+	against. Only ever fills an empty one, never overwrites a choice, and only on
+	a pack list that belongs to an allocation.
+	"""
+	if not _allocation_of_pack_list(doc):
+		return
+	picked = {}
+	for loc in frappe.get_all(
+		"Pick List Item",
+		filters={"parent": doc.custom_order_pick_list},
+		fields=["item_code", "custom_lgth"],
+	):
+		if loc.custom_lgth:
+			picked.setdefault(loc.item_code, loc.custom_lgth)
+	for row in doc.get("pack_list_item") or []:
+		if not row.get("stem_length"):
+			want = picked.get(row.item_code)
+			if want:
+				row.stem_length = want
 
 
 def sync_allocation_packed_status(doc, method=None):
@@ -147,6 +321,16 @@ class ShopifyAllocation(Document):
 					+ ": "
 					+ "; ".join(missing)
 				)
+
+		# Same rule the pick list enforces, applied where the person allocating can
+		# still act on it: after submit the reservation is posted and the pick list
+		# is raised in a guarded block that only logs.
+		if frappe.db.exists("DocType", "Order Pick List"):
+			for row in self.items:
+				if not flt(row.qty):
+					continue
+				uom, per_bunch = bunch_uom_for(row.item_code)
+				self._bunches_for(row, self._stems_for(row), uom, per_bunch)
 
 	def on_submit(self):
 		self._create_reservation()
@@ -257,17 +441,21 @@ class ShopifyAllocation(Document):
 		pick.date_created = nowdate()
 		pick.custom_address = self.shipping_address
 		pick.custom_comment = f"Shopify delivery {self.delivery_index} of {self.deliveries_total or '∞'}"
+		# Box Label falls back to the Sales Order for these, and a Shopify order has
+		# none, so the recipient is written on explicitly here and carried down.
+		if frappe.get_meta("Order Pick List").has_field("custom_consignee"):
+			pick.custom_consignee = cstr(self.recipient_name or self.customer)
 
+		label = self.delivery_label()
 		total_stems = 0
 		for row in self.items:
 			if not flt(row.qty):
 				continue
 			warehouse = row.warehouse or self.source_warehouse
 			stems = self._stems_for(row)
+			uom, per_bunch = bunch_uom_for(row.item_code)
+			bunches = self._bunches_for(row, stems, uom, per_bunch)
 			total_stems += stems
-			# Pick List Item does its own qty maths off this. Left at 0 it reads back a
-			# stock_qty of 0 no matter what is written above it.
-			factor = flt(stems) / flt(row.qty) if flt(row.qty) else 1
 			pick.append(
 				"locations",
 				{
@@ -276,11 +464,20 @@ class ShopifyAllocation(Document):
 					"warehouse": warehouse,
 					# Where it was available, not where the allocation defaulted to.
 					"custom_source_warehouse": warehouse,
-					"qty": flt(row.qty),
+					# qty is BUNCHES and stock_qty is STEMS - what those two fields
+					# mean on that site, and what the scanner counts a scan against.
+					"qty": bunches,
 					"stock_qty": stems,
-					"uom": row.uom,
-					"conversion_factor": factor,
+					"uom": uom,
+					"stock_uom": frappe.db.get_value("Item", row.item_code, "stock_uom"),
+					# Left at 0 the row reads back a stock_qty of 0 whatever is
+					# written above it, because Pick List Item redoes the maths.
+					"conversion_factor": per_bunch,
 					"actual_qty": flt(row.available_qty),
+					# A shop order is one box. Box 1, never 0: the scanner treats a
+					# falsy box id as "no box" and refuses every scan after the first.
+					"custom_box_id": 1,
+					"custom_box_label": label,
 				},
 			)
 			# Two fields for the one fact on that site: `custom_lgth` is the Link
@@ -300,10 +497,13 @@ class ShopifyAllocation(Document):
 
 		qr = _pick_list_qr(pick.name)
 		if qr:
-			# Keep the in-memory doc in step: the generator writes the field
-			# straight to the row, and submit() would otherwise save the stale
-			# empty value back over it.
-			pick.custom_qr_code = qr
+			# The generator writes `custom_qr_code` straight to the row, which bumps
+			# `modified` in the database. Submitting the copy held here would then
+			# fail the concurrency check outright - a TimestampMismatchError inside
+			# a guarded block, so the pick list is silently left in Draft and the
+			# packhouse cannot pick it. Re-read before submitting, which also picks
+			# the QR up rather than saving the stale empty value back over it.
+			pick.reload()
 
 		# Submitting only flips docstatus. Order Pick List has an empty controller
 		# on that site - no stock movement, no eTIMS - which is why the farm's own
@@ -407,6 +607,47 @@ class ShopifyAllocation(Document):
 				f"{', '.join(missing)} is not on this site. Picking and packing live in the "
 				"Upande Tambuzi app — install it here before raising a pick list."
 			)
+
+	@frappe.whitelist()
+	def delivery_label(self):
+		"""Which delivery of the run this box is, e.g. `#1043 2/6`.
+
+		A subscriber gets the same order over months, so the box has to say which
+		one it is; the packhouse and the courier both work off that. It rides on
+		`Pick List Item.custom_box_label`, which is the one field that survives the
+		whole chain untouched - the scanner copies it onto the pack list row, the
+		box label builder onto `Box Label.box_label`, and the printed label shows
+		it as BOX LABEL - so nothing new has to be threaded through to carry it.
+
+		An open-ended subscription has no total, so it is numbered without one
+		rather than being labelled a fraction of a number nobody knows yet.
+		"""
+		ref = ""
+		if self.shopify_order:
+			ref = cstr(frappe.db.get_value("Shopify Order", self.shopify_order, "order_name") or "")
+		ref = ref or cstr(self.shopify_order or self.name)
+		index = cint(self.delivery_index) or 1
+		total = cint(self.deliveries_total)
+		return f"{ref} {index}/{total}" if total else f"{ref} {index}"
+
+	def _bunches_for(self, row, stems, uom, per_bunch):
+		"""Stems as whole bunches, refusing a part bunch.
+
+		The packhouse picks bunches off a shelf; there is no half bunch to pick and
+		the scanner credits a whole one per scan. A pick list asking for a part
+		bunch could never be completed, so it is refused here with the line named
+		rather than left to fail as an unexplained 90%-packed pack list.
+		"""
+		if per_bunch <= 1:
+			return cint(stems)
+		if cint(stems) % cint(per_bunch):
+			frappe.throw(
+				_(
+					"Row {0}: {1} is {2} stems, which is not a whole number of {3}. "
+					"The packhouse picks whole bunches - allocate a multiple of {4}."
+				).format(row.idx, row.item_code, cint(stems), uom, cint(per_bunch))
+			)
+		return cint(cint(stems) / cint(per_bunch))
 
 	def _stems_for(self, row):
 		"""Stems this line represents.
