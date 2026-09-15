@@ -87,14 +87,31 @@ class BifloricaSetting(Document):
 	from typing import TYPE_CHECKING
 
 	if TYPE_CHECKING:
-		from ecommerce_integration.ecommerce_integration.doctype.biflorica_offer_view.biflorica_offer_view import BifloricaOfferView
-		from ecommerce_integration.ecommerce_integration.doctype.biflorica_stock_view.biflorica_stock_view import BifloricaStockView
 		from frappe.types import DF
+
+		from ecommerce_integration.ecommerce_integration.doctype.biflorica_offer_view.biflorica_offer_view import (
+			BifloricaOfferView,
+		)
+		from ecommerce_integration.ecommerce_integration.doctype.biflorica_stock_view.biflorica_stock_view import (
+			BifloricaStockView,
+		)
 
 		access_token: DF.LongText | None
 		at_cron_format: DF.Data | None
 		at_enabled: DF.Check
-		at_event_frequency: DF.Literal["All", "Hourly", "Daily", "Weekly", "Monthly", "Yearly", "Hourly Long", "Daily Long", "Weekly Long", "Monthly Long", "Cron"]
+		at_event_frequency: DF.Literal[
+			"All",
+			"Hourly",
+			"Daily",
+			"Weekly",
+			"Monthly",
+			"Yearly",
+			"Hourly Long",
+			"Daily Long",
+			"Weekly Long",
+			"Monthly Long",
+			"Cron",
+		]
 		at_last_run: DF.Datetime | None
 		at_next_run: DF.Datetime | None
 		base_url: DF.Data
@@ -102,7 +119,19 @@ class BifloricaSetting(Document):
 		customer: DF.Link
 		deals_cron_format: DF.Data | None
 		deals_enabled: DF.Check
-		deals_event_frequency: DF.Literal["All", "Hourly", "Daily", "Weekly", "Monthly", "Yearly", "Hourly Long", "Daily Long", "Weekly Long", "Monthly Long", "Cron"]
+		deals_event_frequency: DF.Literal[
+			"All",
+			"Hourly",
+			"Daily",
+			"Weekly",
+			"Monthly",
+			"Yearly",
+			"Hourly Long",
+			"Daily Long",
+			"Weekly Long",
+			"Monthly Long",
+			"Cron",
+		]
 		deals_last_run: DF.Datetime | None
 		deals_next_run: DF.Datetime | None
 		deals_period: DF.Int
@@ -110,14 +139,38 @@ class BifloricaSetting(Document):
 		live_offers: DF.Table[BifloricaOfferView]
 		offer_cron_format: DF.Data | None
 		offer_enabled: DF.Check
-		offer_event_frequency: DF.Literal["All", "Hourly", "Daily", "Weekly", "Monthly", "Yearly", "Hourly Long", "Daily Long", "Weekly Long", "Monthly Long", "Cron"]
+		offer_event_frequency: DF.Literal[
+			"All",
+			"Hourly",
+			"Daily",
+			"Weekly",
+			"Monthly",
+			"Yearly",
+			"Hourly Long",
+			"Daily Long",
+			"Weekly Long",
+			"Monthly Long",
+			"Cron",
+		]
 		offer_last_run: DF.Datetime | None
 		offer_next_run: DF.Datetime | None
 		password: DF.Password
 		platform: DF.Data
 		predeal_cron_format: DF.Data | None
 		predeal_enabled: DF.Check
-		predeal_event_frequency: DF.Literal["All", "Hourly", "Daily", "Weekly", "Monthly", "Yearly", "Hourly Long", "Daily Long", "Weekly Long", "Monthly Long", "Cron"]
+		predeal_event_frequency: DF.Literal[
+			"All",
+			"Hourly",
+			"Daily",
+			"Weekly",
+			"Monthly",
+			"Yearly",
+			"Hourly Long",
+			"Daily Long",
+			"Weekly Long",
+			"Monthly Long",
+			"Cron",
+		]
 		predeal_last_run: DF.Datetime | None
 		predeal_next_run: DF.Datetime | None
 		predeal_period: DF.Int
@@ -622,15 +675,12 @@ def post_offers(
 		summary["success_count"] = len(success_varieties)
 		summary["failed_count"] = len(failed_varieties)
 
-		# Rows the offer builder dropped before anything was sent (no price, no
-		# stock, no stem length...). It has always recorded why; nothing ever
-		# showed it, so an enabled variety that never reached Biflorica looked
-		# like the button doing nothing at all.
+		# Rows the builder dropped before anything was sent (no price, no stock,
+		# no stem length): without these the run reports "0 offers" and no reason.
 		summary["skipped_reasons"] = _group_skipped_items(summary.get("skipped_items"))
 
-		# Posting nothing is not a success. Biflorica answers "Successfully posted 0
-		# offers" to an empty payload, and reporting that as a green tick is how an
-		# enabled variety that never got offered looked like a completed run.
+		# Biflorica answers "Successfully posted 0 offers" to an empty payload;
+		# a green tick there hides an enabled variety that never got offered.
 		overall_success = bool(api_succeeded) and not failed_varieties and bool(success_varieties)
 
 		# One misconfigured setting rejects every offer for the same reason. Say it
@@ -657,9 +707,7 @@ def post_offers(
 			if len(summary["skipped_reasons"]) > 1:
 				message += f" (and {len(summary['skipped_reasons']) - 1} other reason(s))"
 		else:
-			# `result["message"]` is set when the builder never got as far as an API
-			# call at all — "No enabled items available to create offers", which is
-			# a different thing from Biflorica accepting an empty payload.
+			# result["message"] is set when the builder never reached the API at all.
 			message = api_response.get("message") or result.get("message") or "No offers processed"
 
 		return {
@@ -683,12 +731,7 @@ _SETTINGS_FIELD_BY_ERROR_KEY = {
 
 
 def _group_skipped_items(skipped_items):
-	"""[{reason, items:[label, ...], count}] from the builder's skipped rows.
-
-	One variety is usually enabled at several stem lengths and every one of them
-	is skipped for the same reason, so the rows are grouped by reason and the
-	item labelled once per length.
-	"""
+	"""[{reason, items, count}] — the builder's skipped rows grouped by reason."""
 	by_reason = {}
 	for row in skipped_items or []:
 		if not isinstance(row, dict):
@@ -804,9 +847,8 @@ def get_offers():
 		for offer in offers:
 			if not isinstance(offer, dict):
 				continue
-			# Expired offers are not live and are not listed. Deal enrichment still
-			# reads the raw /offers list (see _fetch_live_offers), so a deal struck
-			# against an offer that has since ended keeps resolving its stem length.
+			# Deal enrichment still reads the raw /offers list, so a deal struck
+			# against a since-ended offer keeps resolving its stem length.
 			if _offer_has_expired(offer):
 				expired += 1
 				continue
@@ -846,20 +888,13 @@ def get_offers():
 
 
 def _offer_has_expired(offer):
-	"""True when the offer's own `dateEnd` is behind us.
-
-	Biflorica's /offers keeps answering with offers that ended weeks ago (the
-	live list carried four that expired on 2026-09-02), and an expired offer
-	cannot be sold against — it only crowds out the ones that can. Offers with
-	no end date never expire.
-	"""
+	"""True when the offer's `dateEnd` is behind us; no end date never expires."""
 	end = offer.get("dateEnd") or offer.get("date_end")
 	if not end:
 		return False
 	try:
 		ends = frappe.utils.get_datetime(end)
 	except Exception:
-		# An unparseable date is not evidence of expiry.
 		return False
 	# A bare date means the whole of that day, not midnight.
 	if (ends.hour, ends.minute, ends.second) == (0, 0, 0):
@@ -933,12 +968,10 @@ def _frequency_window_from(settings, prefix):
 
 
 def _period_window_start(settings, prefix):
-	"""`now` minus the tab's Period (hours), or None when it is unset/zero.
+	"""`now` minus the tab's Period (hours), or None when unset.
 
-	Mirrors Floriday Settings' own `period` field (floriday_sales_order.py), so
-	the two channels are configured the same way. Zero or blank means "no period
-	bound" — the historical behaviour, kept so an upgrade changes nothing until
-	the field is filled in.
+	Mirrors Floriday Settings' own `period` field; zero keeps the old unbounded
+	behaviour so an upgrade changes nothing until the field is filled in.
 	"""
 	try:
 		hours = int(flt(getattr(settings, f"{prefix}_period", 0)))
@@ -1242,7 +1275,7 @@ def _find_or_create_named(doctype, value, name_fields):
 	if existing:
 		return existing
 	meta = frappe.get_meta(doctype)
-	candidates = list(name_fields) + ["description"]
+	candidates = [*name_fields, "description"]
 	for fieldname in candidates:
 		if meta.has_field(fieldname):
 			existing = frappe.db.get_value(doctype, {fieldname: value}, "name")
@@ -1301,14 +1334,10 @@ def _customer_address_country(customer):
 
 
 def _delivery_date_has_passed(deal):
-	"""True when the deal's delivery date is already behind us.
+	"""True when the deal's delivery date is behind us; today still passes.
 
-	Biflorica keeps answering with deals whose delivery date has passed, and
-	ERPNext refuses a Sales Order dated after its own delivery date ("Expected
-	Delivery Date should be after Sales Order Date" — sales_order.py
-	validate_delivery_date). There is nothing to do about such a deal: it cannot
-	be packed and it cannot be ordered, so it is skipped silently rather than
-	reported as a failure. Today's date still passes — the rule is strict.
+	ERPNext refuses a Sales Order dated after its own delivery date
+	(sales_order.validate_delivery_date), so such a deal cannot be ordered at all.
 	"""
 	delivery_date = deal.get("deliveryDate")
 	if not delivery_date:
@@ -1316,26 +1345,15 @@ def _delivery_date_has_passed(deal):
 	try:
 		return getdate(delivery_date) < getdate()
 	except Exception:
-		# An unparseable date is not evidence of anything; let the insert decide.
 		return False
 
 
 def _resolve_deal_spec(customer, item_code, stem_length, delivery_date=None):
-	"""The customer's packing Specification for this variety/length, or (None, None).
+	"""(spec name, box item) for this customer/variety/length, or (None, None).
 
-	A Biflorica deal says *what* was sold; the Specification says *how* that
-	customer wants it packed — bunch size, bunches per box, box type, cut stage,
-	defoliation, sleeve and label wording, which charges apply. The packhouse
-	reads all of that off the Sales Order line, so a deal-created order that
-	names no spec arrives on the floor with the packing half of the order blank.
-
-	Matched on the spec's own declared relationships, never on the spec name:
-	`customer` + an Approved Varieties row for the item + a Box Build row for the
-	deal's stem length. Specs whose validity window excludes the delivery date
-	and Inactive specs are skipped. Returns (spec name, the matching box item).
-
-	Ambiguity resolves to the most specific spec: a Mono Box before a Mixed Box
-	(a Biflorica deal is one variety), then the most recently modified.
+	Matched on the spec's declared relationships, never on its name: customer +
+	an Approved Varieties row for the item + a Box Build row for the length.
+	Mono Box wins over Mixed Box (a deal is one variety), then most recent.
 	"""
 	if not customer or not item_code or not frappe.db.exists("DocType", "Specifications"):
 		return None, None
@@ -1383,12 +1401,8 @@ def _resolve_deal_spec(customer, item_code, stem_length, delivery_date=None):
 def _spec_detail_payload(spec_name):
 	"""Spec-level packing detail for a Sales Order line.
 
-	upande_packhouse already derives this for its own spec autofill (cut stage,
-	defoliation, the three charge flags, and flower food / sleeve / label read
-	off the spec's consumable Items), and the packhouse floor expects exactly
-	what that produces — so call it rather than keep a second interpretation of
-	the same spec here. It is the only packhouse import in this module and the
-	app is optional, hence the guarded lookup.
+	Delegates to upande_packhouse's own spec autofill so the floor gets exactly
+	what it expects; that app is optional, hence the guarded lookup.
 	"""
 	try:
 		detail_payload = frappe.get_attr("upande_packhouse.spec_autofill._detail_payload")
@@ -1400,8 +1414,7 @@ def _spec_detail_payload(spec_name):
 		try:
 			return detail_payload(doc)
 		except Exception:
-			# A malformed spec must not cost us the order — fall through to the
-			# spec's own fields, which is everything except the consumables.
+			# Fall through to the spec's own fields: everything but the consumables.
 			pass
 	return {
 		"custom_cut_stage": doc.cut_stage or "",
@@ -1413,14 +1426,10 @@ def _spec_detail_payload(spec_name):
 
 
 def _set_line_field(line, soi_meta, fieldname, value):
-	"""Set `fieldname` on a line, skipping a Link whose target record is missing.
+	"""Set `fieldname`, dropping a Link whose target record does not exist.
 
-	The spec and the Sales Order line do not always point their Link fields at
-	the same master — `Sales Order Item.custom_box_type` pointed at Item on the
-	live site while `Spec Box Item.box_type` points at Box Type — so copying a
-	value across can name a record that does not exist, and link validation then
-	kills the whole insert. Anything that fails to resolve is dropped: a line
-	missing one packing detail still beats no order.
+	The spec and the line do not always point at the same master (box_type ->
+	Box Type vs Item), and an unresolvable Link kills the whole insert.
 	"""
 	if not soi_meta.has_field(fieldname) or value in (None, ""):
 		return
@@ -1431,28 +1440,20 @@ def _set_line_field(line, soi_meta, fieldname, value):
 
 
 def _bunch_size(uom):
-	"""Stems in one bunch, read off the UOM's own name: "Bunch (10)" -> 10.
+	"""Stems in one bunch, off the UOM name: "Bunch (10)" -> 10.
 
-	The bunch UOMs on these sites carry their size in the name and most Items
-	never got a matching UOM Conversion Detail row, so this is the only reading
-	of "how many stems is one of these" that is always available. It is also
-	exactly how upande_packhouse reads it (sales_order_engine._uom_factor), and
-	the two have to agree or the order's stem count changes the moment the
-	packhouse touches it.
+	Same reading as upande_packhouse's sales_order_engine._uom_factor; the two
+	must agree or the stem count changes when the packhouse touches the order.
 	"""
 	match = re.search(r"\((\d+)\)", uom or "")
 	return int(match.group(1)) if match else 0
 
 
 def _uom_conversion_factor(item_code, uom):
-	"""Stems per `uom` for this item: the UOM's own name, else the Item's conversion.
+	"""Stems per `uom`: the UOM name wins, the Item's own conversion is fallback.
 
-	The name wins deliberately. upande_packhouse reads the bunch size from the
-	name and nothing else, so an Item whose UOM Conversion Detail disagrees with
-	it (a "Bunch (10)" row with factor 1, which is exactly the bad data that
-	started this) would have the packhouse silently recount the order on its
-	first save. The Item's conversion is the fallback for a UOM that carries no
-	size in its name.
+	The name wins because the packhouse reads only that; an Item Conversion that
+	disagrees would have it silently recount the order on first save.
 	"""
 	if not uom or frappe.db.get_value("Item", item_code, "stock_uom") == uom:
 		return 1
@@ -1466,12 +1467,7 @@ def _uom_conversion_factor(item_code, uom):
 
 
 def _deal_selling_uom(item_code, stems_per_bunch=None):
-	"""(uom, stems per uom) to sell this item's stems in.
-
-	The spec's bunch size wins when it names one — the packhouse counts the
-	bunches the spec describes — as long as a UOM exists for it; otherwise the
-	Item's own sales UOM is used.
-	"""
+	"""(uom, stems per uom): the spec's bunch size if a UOM exists, else sales UOM."""
 	stock_uom = frappe.db.get_value("Item", item_code, "stock_uom") or "Stems"
 	if stems_per_bunch:
 		spec_uom = f"Bunch ({int(stems_per_bunch)})"
@@ -1482,11 +1478,10 @@ def _deal_selling_uom(item_code, stems_per_bunch=None):
 
 
 def _apply_spec_to_line(line, soi_meta, spec_name, box_item):
-	"""Stamp the spec's packing instructions onto a deal's Sales Order line.
+	"""Stamp the spec's packing instructions onto a line.
 
-	Quantities are NOT touched here: the deal's stems are what was traded, and
-	the line's UOM was already settled from this same spec's bunch size before
-	the line was built (see _deal_selling_uom).
+	Quantities are untouched: the UOM was already settled from this spec's
+	bunch size before the line was built (_deal_selling_uom).
 	"""
 	mixed_bunch = 1 if box_item.get("bunch_type") == "Mixed Bunch" else 0
 	assortment = frappe.db.get_value("Specifications", spec_name, "box_assortment")
@@ -1512,23 +1507,12 @@ def _apply_spec_to_line(line, soi_meta, spec_name, box_item):
 
 
 def _resolve_deals_consignee(settings, customer):
-	"""Consignee for deal Sales Orders: the configured one, else the customer's.
+	"""Configured `deals_consignee`, else the customer's own Consignee, else None.
 
-	A Biflorica deal names no consignee — the buyer picks the destination per
-	order — so `deals_consignee` on Biflorica Setting is the intended source.
-	It is routinely unset, and on a site where custom_consignee is mandatory
-	that failed every deal outright. The Consignee master's own link to the
-	customer is the only other place the answer can come from, so try it, but
-	only when it is UNAMBIGUOUS: the live Kaitet master has three Consignees
-	pointing at the Biflorica buyer, and stamping an arbitrary one of them onto
-	a draft reads as reviewed when it is a guess.
-
-	Both shipped Consignee variants are covered: upande_kaitet's has a
-	`customer` Link, upande_packhouse's a `customers` Table MultiSelect (child
-	doctype "Consignee Customer").
-
-	Returns None when nothing can be resolved — the caller lands the draft
-	without a consignee rather than dropping the deal.
+	A deal names no consignee. The master's link to the customer is the only
+	other source, and it is used only when UNAMBIGUOUS — one buyer can have
+	several consignees, and a guess on a draft reads as a reviewed value.
+	Covers both variants: a `customer` Link and a `customers` Table MultiSelect.
 	"""
 	configured = getattr(settings, "deals_consignee", None)
 	if configured:
@@ -1536,7 +1520,6 @@ def _resolve_deals_consignee(settings, customer):
 	if not customer or not frappe.db.exists("DocType", "Consignee"):
 		return None
 
-	# A Consignee named exactly like the customer is the one unambiguous match.
 	if frappe.db.exists("Consignee", customer):
 		return customer
 
@@ -1567,10 +1550,8 @@ def _resolve_deal_item(deal):
 	)
 
 
-# Biflorica sells roses, and the site's own Sales Order already hardcodes
-# "Roses" as the sales order type. upande_packhouse's roses pipeline keys off
-# Business Unit == "Roses" (sales_order_engine.py), so a deal order without it
-# is skipped by the packhouse entirely.
+# upande_packhouse's roses pipeline keys off Business Unit == "Roses"; a deal
+# order without it is skipped by the packhouse entirely.
 DEALS_BUSINESS_UNIT_DEFAULT = "Roses"
 
 
@@ -1677,11 +1658,8 @@ def _create_sales_order_from_deal(
 		and not getattr(settings, "deals_farm", None)
 	):
 		return None, None, "no Deals Farm configured on Biflorica Setting"
-	# The consignee is configured or derived from the customer, never carried by
-	# the deal. An unresolvable one does NOT drop the deal: these are drafts, and
-	# a draft with everything else filled in is worth more than no draft at all,
-	# so the insert skips the mandatory check and submit re-imposes it (see
-	# `needs_consignee` below).
+	# An unresolvable consignee does not drop the deal: the draft is inserted
+	# without the mandatory check and submit re-imposes it.
 	consignee = _resolve_deals_consignee(settings, customer)
 	consignee_required = so_meta.has_field("custom_consignee") and so_meta.get_field("custom_consignee").reqd
 	needs_consignee = consignee_required and not consignee
@@ -1734,10 +1712,8 @@ def _create_sales_order_from_deal(
 	# Keep the deal's negotiated price: don't let the price list / pricing rules
 	# override the per-stem rate we set below.
 	so.ignore_pricing_rule = 1
-	# Deal orders used to keep the company default (Standard Selling, in KES) on a
-	# USD order, so the document disagreed with itself about its own currency.
-	# The configured Biflorica price list is the one that matches the deal
-	# currency; the rate stays pinned per line either way.
+	# The company default (Standard Selling, KES) leaves a USD order disagreeing
+	# with itself about its own currency. Rates stay pinned per line either way.
 	if so_meta.has_field("selling_price_list") and getattr(settings, "price_list", None):
 		so.selling_price_list = settings.price_list
 
@@ -1750,7 +1726,7 @@ def _create_sales_order_from_deal(
 	if so_meta.has_field("custom_sales_order_type"):
 		so.custom_sales_order_type = "Roses"
 	# `business_unit` is the accounting dimension the packhouse reads;
-	# `custom_business_unit` is the legacy mirror upande_packhouse keeps in step.
+	# `custom_business_unit` is its legacy mirror.
 	for fieldname in ("business_unit", "custom_business_unit"):
 		if so_meta.has_field(fieldname) and business_unit:
 			so.set(fieldname, business_unit)
@@ -1802,8 +1778,6 @@ def _create_sales_order_from_deal(
 	if so_meta.has_field("po_no"):
 		so.po_no = deal_ref
 
-	# Sell in BUNCHES — the UOM and its stem count are settled per line, from the
-	# customer's Specification where there is one (see _deal_selling_uom).
 	# One entry per Sales Order line: (stems, per-stem rate, stem length label).
 	# With a breakdown that is one line per length; without one it is a single
 	# blended line, which is all the deal payload alone supports.
@@ -1828,10 +1802,8 @@ def _create_sales_order_from_deal(
 		)
 
 	so.flags.ignore_permissions = True
-	# `needs_consignee` means the site marks custom_consignee mandatory and nothing
-	# could be resolved for it. Skipping the mandatory check lands the draft anyway;
-	# the check runs again on submit, so nothing reaches Biflorica or the packhouse
-	# without a consignee — it just stops being a reason to lose the whole deal.
+	# The mandatory check runs again on submit, so nothing reaches Biflorica or
+	# the packhouse without a consignee.
 	so.insert(ignore_permissions=True, ignore_mandatory=needs_consignee)
 	return so.name, ("created_incomplete" if needs_consignee else "created"), None
 
@@ -1854,8 +1826,8 @@ def _append_deal_line(
 	total_stems = stems
 	soi_meta = frappe.get_meta(target_item_dt)
 
-	# Stem length first: the Specification is matched on it, and the spec's bunch
-	# size then decides what one selling unit is.
+	# Stem length first: the spec is matched on it, and its bunch size then
+	# decides what one selling unit is.
 	deal_len = size or deal.get("stem_length")
 	stem_length = _resolve_stem_length(deal_len, stem_length_map)
 	spec_name, box_item = _resolve_deal_spec(
@@ -1863,16 +1835,14 @@ def _append_deal_line(
 	)
 	line_uom, conversion_factor = _deal_selling_uom(item_code, (box_item or {}).get("stems_per_bunch"))
 
-	# qty counts BUNCHES, stock_qty (qty x factor) counts stems. The rate has to
-	# be per bunch to match: the deal's price is per stem, and a per-stem rate
-	# against a bunch qty silently divided the order total by the bunch size.
+	# qty counts BUNCHES, stock_qty counts stems, so the rate must be per bunch:
+	# a per-stem rate against a bunch qty divides the order total by the bunch.
 	line = {
 		"item_code": item_code,
 		"qty": flt(total_stems) / conversion_factor,
 		"uom": line_uom,
 		"conversion_factor": conversion_factor,
-		# Pin both rate and price_list_rate so the price list can't override the
-		# deal's negotiated price.
+		# Pinned so the price list cannot override the negotiated price.
 		"rate": flt(rate) * conversion_factor,
 		"price_list_rate": flt(rate) * conversion_factor,
 	}
@@ -1890,11 +1860,8 @@ def _append_deal_line(
 	if soi_meta.has_field("custom_box_label") and box_label:
 		line["custom_box_label"] = box_label
 
-	# Transit truck, which upande_packhouse carries onto the pick list as
-	# `transit_truck` and marks mandatory on a Roses line. A deal names no truck;
-	# its `cargo` is the freight handover these boxes are built for, and it is
-	# already what the order's Truck Details, Drop Off Point and Shipping Agent
-	# carry. Without it staff had to type something — "test" — to save at all.
+	# Transit truck: mandatory on a Roses line, and a deal names none. Its cargo
+	# is the freight handover, as on Truck Details / Drop Off / Shipping Agent.
 	_set_line_field(line, soi_meta, "custom_truck", (deal.get("cargo") or "").strip())
 
 	# Accounting dimensions repeat on the line; the GL picks them up from here.
@@ -1919,10 +1886,8 @@ def _append_deal_line(
 	if soi_meta.has_field("custom_number_of_boxes"):
 		line["custom_number_of_boxes"] = int(flt(deal.get("quantity")))
 
-	# The Specification resolved above supplies the packing half of the order.
-	# Applied last so it wins over the deal-derived packrate: Biflorica's
-	# `packing` is how the trade was priced, the spec is how the packhouse is
-	# instructed to pack.
+	# Applied last so the spec wins over the deal-derived packrate: `packing` is
+	# how the trade was priced, the spec is how the floor is told to pack.
 	if spec_name:
 		_apply_spec_to_line(line, soi_meta, spec_name, box_item)
 
@@ -1984,9 +1949,8 @@ def get_deals(window_from: str | datetime | None = None):
 			except Exception as e:
 				frappe.db.rollback()
 				frappe.log_error(f"Deal {deal_id}: {e}", "Biflorica Deal -> SO Error")
-				# A validation raised through msgprint (ERPNext's delivery-date check,
-				# say) is still queued for the client and would pop one modal per
-				# deal on top of the summary. The reason is carried in `failed`.
+				# A msgprint validation stays queued for the client and would pop one
+				# modal per deal on top of the summary; `failed` carries the reason.
 				frappe.clear_messages()
 				err, so_name, status = str(e), None, None
 
@@ -2034,8 +1998,7 @@ def get_deals(window_from: str | datetime | None = None):
 			"failed_count": len(failed),
 			"incomplete_count": len(incomplete),
 		}
-		# One missing setting fails every deal with the identical reason; say it
-		# once instead of repeating it per deal (see _shared_failure_reason).
+		# One missing setting fails every deal identically; say it once.
 		shared_reason = _shared_failure_reason(failed, len(deals) - skipped_past)
 		if shared_reason:
 			summary["shared_reason"] = shared_reason
@@ -2052,8 +2015,6 @@ def get_deals(window_from: str | datetime | None = None):
 				if shared_reason
 				else f"{len(failed)} issue(s)"
 			)
-		# A run that only turned up past-dated deals has nothing to show for it —
-		# those are not orders and not problems, so say so plainly.
 		message = "; ".join(parts) if parts else "No new orders"
 
 		return {"success": not failed, "message": message, "summary": summary, "data": result}

@@ -56,11 +56,8 @@ function toast(message, indicator) {
 	frappe.show_alert({ message: message, indicator: indicator || "blue" }, 7);
 }
 
-// One bad setting fails every deal with the same reason, and the toast then said
-// it once per deal — six identical sentences that scrolled the one actionable
-// fact off screen. `shared_reason` is set server-side when EVERY failure shares a
-// reason, so that case collapses to a single line; genuinely per-deal reasons
-// still list the deals, deduplicated by reason.
+// `shared_reason` is set server-side when EVERY failure shares a reason, which
+// collapses to one line; per-deal reasons are still listed, deduplicated.
 function report_failures(failed, summary) {
 	if (!failed.length) {
 		return;
@@ -342,9 +339,8 @@ frappe.ui.form.on("Biflorica Setting", {
 							});
 							toast(__("Failed: {0}", [lines.join(", ")]), "red");
 						}
-						// Rows dropped before anything was sent — an enabled variety with
-						// no price, no stock or no stem length. Without this the button
-						// reported "0 offers" and never said which row or why.
+						// Rows dropped before anything was sent: no price, no stock,
+						// no stem length.
 						const skipped = s.skipped_reasons || [];
 						skipped.forEach(function (group) {
 							toast(

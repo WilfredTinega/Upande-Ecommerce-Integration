@@ -128,11 +128,7 @@ class FloridayItems(Document):
 
 		self.set(
 			"table_ppvq",
-			[
-				row
-				for row in self.table_ppvq
-				if row.stem_length in latest_rate or row.trade_item_id
-			],
+			[row for row in self.table_ppvq if row.stem_length in latest_rate or row.trade_item_id],
 		)
 
 		self.save()
