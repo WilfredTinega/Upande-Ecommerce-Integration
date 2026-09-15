@@ -1,0 +1,125 @@
+name: Lint Autofix
+
+# Formatting failures are not review feedback — they are a diff nobody has to
+# argue about. This job applies the repo's own pinned formatters (the same ruff
+# and prettier versions .pre-commit-config.yaml runs locally) and pushes the
+# result back to the PR branch, so a contributor never has to re-run a linter by
+# hand to make a check go green.
+#
+# What it CANNOT fix still fails: ruff rules with no autofix, syntax errors,
+# semgrep findings. Those are real problems and stay red.
+#
+# The push uses GITHUB_TOKEN, whose pushes deliberately do not re-trigger
+# workflows, so the branch does not loop. The other checks re-run on the next
+# human push; run this job before merging if a green re-check is needed.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  # Not cancel-in-progress: this job pushes, and a half-applied format is worse
+  # than a redundant run.
+  group: lint-autofix-ecommerce-integration-${{ github.event.number || github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  autofix:
+    name: Apply formatters
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+
+    steps:
+      - name: Resolve target branch
+        id: target
+        env:
+          PR_BRANCH: ${{ github.event.pull_request.head.ref }}
+          PR_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+        run: |
+          set -euo pipefail
+          branch="${PR_BRANCH:-${GITHUB_REF_NAME}}"
+          if [ "$branch" = "main" ]; then
+            echo "::error::Refusing to push formatting to main."
+            exit 1
+          fi
+          if [ -n "${PR_REPO:-}" ] && [ "$PR_REPO" != "$GITHUB_REPOSITORY" ]; then
+            # A fork's branch is not ours to push to; report instead of fixing.
+            echo "fork=true" >>"$GITHUB_OUTPUT"
+          fi
+          echo "branch=$branch" >>"$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.target.outputs.branch }}
+          fetch-depth: 0
+          persist-credentials: true
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.14'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Install the pinned formatters
+        run: |
+          set -euo pipefail
+          # Same versions as .pre-commit-config.yaml — a newer formatter would
+          # rewrite files the local hooks then fight over.
+          pip install "ruff==0.14.10"
+          npm install --no-save --no-package-lock prettier@2.7.1
+
+      - name: Apply formatters
+        id: fix
+        run: |
+          set -euo pipefail
+          ruff check --select=I --fix .
+          ruff format .
+          # Same scope as the prettier hook in .pre-commit-config.yaml
+          # (javascript, vue, scss) — widening it here would rewrite files the
+          # local hooks never touch.
+          npx prettier --write "**/*.{js,vue,scss}" --ignore-path .gitignore || true
+
+          if git diff --quiet; then
+            echo "changed=false" >>"$GITHUB_OUTPUT"
+            echo "Nothing to fix."
+          else
+            echo "changed=true" >>"$GITHUB_OUTPUT"
+            git diff --stat
+          fi
+
+      - name: Push the formatted files
+        if: steps.fix.outputs.changed == 'true' && steps.target.outputs.fork != 'true'
+        env:
+          BRANCH: ${{ steps.target.outputs.branch }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "style: apply ruff and prettier"
+          # Plain push, not force: this adds a commit, it never rewrites history.
+          # A lease still guards against a push that landed while the job ran.
+          git push --force-with-lease="$BRANCH:${{ github.event.pull_request.head.sha || github.sha }}" \
+            origin "HEAD:$BRANCH"
+          echo "::notice::Formatting applied and pushed to $BRANCH."
+
+      - name: Report unpushable changes on a fork
+        if: steps.fix.outputs.changed == 'true' && steps.target.outputs.fork == 'true'
+        run: |
+          echo "::error::This PR comes from a fork, so the formatting could not be pushed. Run 'ruff check --select=I --fix . && ruff format . && npx prettier@2.7.1 --write .' on the branch."
+          exit 1
+
+      - name: Fail on what no formatter can fix
+        run: |
+          set -euo pipefail
+          # Everything fixable is already applied above, so anything ruff still
+          # reports needs a human.
+          ruff check .

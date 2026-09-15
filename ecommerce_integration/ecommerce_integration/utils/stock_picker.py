@@ -308,11 +308,8 @@ def set_enabled_stock(
 def _picker_price_list(settings_doctype=None):
 	"""(price list, customer) the picker prices against.
 
-	The channel's own `price_list` wins; otherwise the channel's configured
-	CUSTOMER decides, because that is the list the order will actually be priced
-	on downstream (upande_packhouse reads the customer's Default Price List on
-	every Roses Sales Order). Falling straight through to the generic USD list
-	would show a rate here that the order never uses.
+	The channel's `price_list` wins, then the configured customer's default —
+	that is the list upande_packhouse prices the order on downstream.
 	"""
 	from ecommerce_integration.ecommerce_integration.utils import _resolve_price_list
 
@@ -333,12 +330,10 @@ def _picker_price_list(settings_doctype=None):
 
 @frappe.whitelist()
 def get_stock_prices(items: str | list, settings_doctype: str | None = None):
-	"""Per-stem rate for each picker row, off the channel customer's price list.
+	"""Per-stem rate for each picker row, keyed "item_code::stem_length".
 
-	`items` is the picker's rows as [{item_code, stem_length}, ...]. The answer is
-	keyed "item_code::stem_length" so the grid can look a row up directly, and it
-	comes from the SAME resolver the offer builder prices with — a row showing no
-	rate here is exactly a row that Biflorica will refuse to offer.
+	Uses the same resolver the offer builder prices with, so a row with no rate
+	here is exactly a row Biflorica will refuse to offer.
 	"""
 	from ecommerce_integration.ecommerce_integration.utils.post_harvest import (
 		canonical_stem_length,
@@ -365,8 +360,7 @@ def get_stock_prices(items: str | list, settings_doctype: str | None = None):
 		stem_length = (row or {}).get("stem_length") or ""
 		canon = canonical_stem_length(stem_length)
 		rate = rates.get(canon) if canon else None
-		# A single-length item is unambiguous — same allowance the offer builder
-		# makes in resolve_stem_length_rate.
+		# Same single-length allowance the offer builder makes.
 		if rate is None and len(rates) == 1:
 			rate = next(iter(rates.values()))
 		if rate is not None:
@@ -389,13 +383,10 @@ def set_stock_price(
 ):
 	"""Create or update the per-stem Item Price for one picker row.
 
-	Writes the length as the Stem Length DOCNAME (the master autonames
-	differently per site, so the label is not a valid Link value).
-
-	ERPNext v16 does not include `custom_length` in Item Price's duplicate check,
-	so a second per-length row for one item and price list is rejected outright.
-	That is reported as what it is rather than as a generic save failure — on such
-	a site the per-length ladder has to come from the Stem Length master.
+	The length is stored as the Stem Length DOCNAME; the master autonames
+	differently per site, so its label is not a valid Link value. ERPNext v16
+	leaves custom_length out of Item Price's duplicate check, so a second
+	per-length row is rejected — reported as such rather than as a save failure.
 	"""
 	from ecommerce_integration.ecommerce_integration.utils.post_harvest import (
 		resolve_stem_length_name,

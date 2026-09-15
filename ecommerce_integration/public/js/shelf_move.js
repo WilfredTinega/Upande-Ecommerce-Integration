@@ -25,8 +25,7 @@ ecommerce_integration.SET_ENABLED_STOCK =
 ecommerce_integration.GET_ENABLED_ROWS =
 	"ecommerce_integration.ecommerce_integration.utils.stock_picker.get_enabled_stock_rows";
 
-// Per-stem rates for the listed rows + the single-row price writer behind the
-// "Set" button in the Price column.
+// Price column: per-stem rates for the listed rows, and the writer behind "Set".
 ecommerce_integration.GET_STOCK_PRICES =
 	"ecommerce_integration.ecommerce_integration.utils.stock_picker.get_stock_prices";
 ecommerce_integration.SET_STOCK_PRICE =
@@ -385,9 +384,8 @@ ecommerce_integration._render_shelf_rows = function (
 		$root.find(".shelf-item-row:visible .shelf-row-check").prop("checked", checked);
 	});
 
-	// Prices are fetched after the table is in the DOM rather than with the rows:
-	// the grid stays usable while they load, and a pricing failure costs the
-	// column, never the picker.
+	// Fetched after the table renders: a pricing failure costs the column, not
+	// the picker.
 	ecommerce_integration._load_prices($root, channel, combined_rows);
 
 	$root.find(".shelf-enable-btn").on("click", () => {
@@ -491,16 +489,15 @@ ecommerce_integration._apply_shelf_filter = function ($root) {
 // when enabling, writes its stock_qty to the "Qty to Enable" value. The row
 // stays in the panel afterwards, carrying its `is-enabled` row class, so
 // the published qty can be edited or the row toggled again.
-// Channel name -> the Single its price list / customer are configured on.
+// Channel name -> the Single its price list / customer live on.
 ecommerce_integration._settings_doctype_for = function (channel) {
 	if (channel === "Biflorica") return "Biflorica Setting";
 	if (channel === "Floriday") return "Floriday Settings";
 	return "";
 };
 
-// Fill the Price column from the channel customer's price list, and hang a
-// "Set" button off every row that has no rate — those are precisely the rows
-// the offer builder refuses to send, so this is where they get fixed.
+// Fill the Price column, with a "Set" button on every unpriced row — those are
+// exactly the rows the offer builder refuses to send.
 ecommerce_integration._load_prices = function ($root, channel, rows) {
 	const $cells = $root.find(".shelf-price-cell");
 	if (!$cells.length) return;
@@ -557,7 +554,6 @@ ecommerce_integration._render_price_cell = function ($cell, rate, res) {
 	$cell.data("rate", rate || 0);
 };
 
-// One row's price, asked for and written on the spot.
 ecommerce_integration._prompt_price = function ($cell, $root, channel) {
 	const $tr = $cell.closest("tr.shelf-item-row");
 	const item_code = $tr.data("item-code");
