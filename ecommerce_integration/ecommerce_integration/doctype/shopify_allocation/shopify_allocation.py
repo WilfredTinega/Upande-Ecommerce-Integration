@@ -220,6 +220,46 @@ def apply_shopify_pack_list_defaults(doc, method=None):
 	if doc.get("custom_farm") and not doc.get("custom_abbreviation"):
 		doc.custom_abbreviation = frappe.db.get_value("Farm", doc.custom_farm, "abbreviation")
 
+	if not doc.get("custom_currency"):
+		# Named in the docstring above but never actually written. A Shopify order
+		# settles in whatever Shopify charged, and the pack list prints it.
+		order = frappe.db.get_value("Shopify Allocation", allocation, "shopify_order")
+		if order:
+			doc.custom_currency = cstr(frappe.db.get_value("Shopify Order", order, "currency"))
+
+	if not cint(doc.get("custom_picked_total_stems")):
+		# What the pack list is measured against: that site computes completion as
+		# `custom_total_stems / custom_picked_total_stems`, and the script that fills
+		# the divisor sums a Sales Order's lines. A Shopify pack list has none, so the
+		# divisor stayed empty and every packing scan died on it - either dividing by
+		# zero or, when the raw Data string reached it, "unsupported operand type(s)
+		# for /: 'int' and 'str'". The pick list already carries the figure.
+		picked = frappe.db.get_value(
+			"Order Pick List", doc.custom_order_pick_list, "custom_total_stems"
+		)
+		doc.custom_picked_total_stems = cint(flt(picked))
+
+	if not doc.get("custom_delivery_point") and frappe.db.exists("DocType", "Delivery Points"):
+		# A Link to a controlled list of freight agents and destinations, so a street
+		# address cannot go in it; the city is the only part that can match a record.
+		# The address itself travels on custom_customer_address and on each row.
+		city = cstr(alloc.shipping_city or "").strip().upper()
+		if city and frappe.db.exists("Delivery Points", city):
+			doc.custom_delivery_point = city
+
+	# Rows the packing scanner appends are built from the pick list, so they carry no
+	# consignee, no delivery point and no farm - all three are Sales Order fetches on
+	# that site. Fill them the same way, without touching a row someone edited.
+	for row in doc.get("pack_list_item") or []:
+		if not row.get("customer_id"):
+			row.customer_id = cstr(alloc.customer)
+		if not row.get("custom_consignee"):
+			row.custom_consignee = cstr(alloc.recipient_name)
+		if not row.get("delivery_point"):
+			row.delivery_point = cstr(alloc.shipping_address)
+		if not row.get("custom_source_farm") and doc.get("custom_farm"):
+			row.custom_source_farm = doc.custom_farm
+
 
 def carry_stem_length_to_pack_list(doc, method=None):
 	"""Copy each row's stem length down from the pick list when it is missing.

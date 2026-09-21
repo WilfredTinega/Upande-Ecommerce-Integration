@@ -194,6 +194,10 @@ doc_events = {
 		"on_cancel": "ecommerce_integration.ecommerce_integration.doctype.shopify_allocation.shopify_allocation.sync_allocation_packed_status",
 	},
 	"Sales Order": {
+		# A Biflorica deal is a struck trade: the buyer has already seen its value
+		# on Biflorica. upande_packhouse reprices Roses orders from Item Price on
+		# validate, so this runs after it and puts the agreed rate back.
+		"before_save": "ecommerce_integration.ecommerce_integration.doctype.biflorica_setting.biflorica_setting.hold_biflorica_deal_price",
 		# Submitting is the confirmation step for both channels: a Biflorica
 		# preorder is approved on Biflorica, and a Floriday order is fulfilled on
 		# Floriday. Biflorica's runs inline and blocks the submit if it is
@@ -239,6 +243,19 @@ doc_events = {
 # `ecommerce_integration.setup.ci.setup_test_site` explicitly, which covers this
 # plus the external link-target stubs, so tests hold up either way.
 before_tests = "erpnext.setup.utils.before_tests"
+
+# Override DocType Class
+# ------------------------------
+#
+# The packing chain is upande_tambuzi's. A Shopify pack list has no Sales Order,
+# and that app's controller assumes one on the Reviewed transition, so the class
+# is SUBCLASSED here rather than edited there: a farm pack list runs the original
+# code through super() and keeps its OPL, FPL, box label and dispatch behaviour
+# exactly as it was, and only a pack list traced back to a Shopify Allocation
+# takes the other branch. See overrides/farm_pack_list.py for what differs.
+override_doctype_class = {
+	"Farm Pack List": "ecommerce_integration.overrides.farm_pack_list.ShopifyAwareFarmPackList",
+}
 
 # Extend DocType Class
 # ------------------------------

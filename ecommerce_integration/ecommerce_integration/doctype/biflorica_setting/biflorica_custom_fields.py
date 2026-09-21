@@ -197,6 +197,18 @@ BIFLORICA_CUSTOM_FIELDS = [
 	{
 		"dt": "Sales Order Item",
 		"df": {
+			"fieldname": "custom_biflorica_rate",
+			"label": "Biflorica Rate / Stem",
+			"fieldtype": "Currency",
+			"read_only": 1,
+			"description": "What the buyer agreed on Biflorica. The order is held to this.",
+			"insert_after": "rate",
+		},
+		"optional": True,
+	},
+	{
+		"dt": "Sales Order Item",
+		"df": {
 			"fieldname": "custom_ordered_quantity",
 			"label": "Ordered Stems",
 			"fieldtype": "Float",
