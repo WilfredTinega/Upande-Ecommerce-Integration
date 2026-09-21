@@ -234,9 +234,7 @@ def apply_shopify_pack_list_defaults(doc, method=None):
 		# divisor stayed empty and every packing scan died on it - either dividing by
 		# zero or, when the raw Data string reached it, "unsupported operand type(s)
 		# for /: 'int' and 'str'". The pick list already carries the figure.
-		picked = frappe.db.get_value(
-			"Order Pick List", doc.custom_order_pick_list, "custom_total_stems"
-		)
+		picked = frappe.db.get_value("Order Pick List", doc.custom_order_pick_list, "custom_total_stems")
 		doc.custom_picked_total_stems = cint(flt(picked))
 
 	if not doc.get("custom_delivery_point") and frappe.db.exists("DocType", "Delivery Points"):

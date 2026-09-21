@@ -20,7 +20,6 @@ What differs for a Shopify pack list, and why:
 """
 
 import frappe
-
 from upande_tambuzi.upande_tambuzi.doctype.farm_pack_list.farm_pack_list import (
 	FarmPackList as TambuziFarmPackList,
 )
