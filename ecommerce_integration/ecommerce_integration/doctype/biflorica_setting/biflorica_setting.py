@@ -3,8 +3,9 @@
 
 import json
 import re
-from datetime import datetime
+from datetime import datetime, timezone
 from urllib.parse import urljoin
+from zoneinfo import ZoneInfo
 
 import frappe
 import requests
@@ -22,6 +23,11 @@ from ecommerce_integration.ecommerce_integration.doctype.biflorica_setting.biflo
 from ecommerce_integration.ecommerce_integration.utils import create_orders_as_quotation
 
 _logger = frappe.logger("biflorica", allow_site=True)
+
+
+# Every po_no this app stamps starts here; it is how an order is recognised as
+# Biflorica's own long after the fetch that created it.
+BIFLORICA_DEAL_PREFIX = "BIFLORICA-"
 
 
 def deal_po_ref(deal_id, kind="deal"):
@@ -118,6 +124,7 @@ class BifloricaSetting(Document):
 		create_orders_as_quotation: DF.Check
 		customer: DF.Link
 		deals_cron_format: DF.Data | None
+		deals_auto_approve: DF.Check
 		deals_enabled: DF.Check
 		deals_event_frequency: DF.Literal[
 			"All",
@@ -903,10 +910,22 @@ def _offer_has_expired(offer):
 
 
 def _to_iso_z(value):
+	"""Site-local datetime -> UTC, stamped with the Z the API expects.
+
+	The Z was being written onto the site's own clock, so on Africa/Nairobi every
+	window was sent three hours ahead of itself — a one-hour Period asked for a
+	window that had not happened yet.
+	"""
 	if not value:
 		return None
 	dt = frappe.utils.get_datetime(value)
-	return dt.strftime("%Y-%m-%dT%H:%M:%SZ")
+	# A bare date is a calendar day, not midnight in some zone: shifting it would
+	# send a 17 Sep delivery back to Biflorica as the 16th.
+	if ":" not in str(value):
+		return dt.strftime("%Y-%m-%dT00:00:00Z")
+	if dt.tzinfo is None:
+		dt = dt.replace(tzinfo=ZoneInfo(frappe.utils.get_system_timezone()))
+	return dt.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 def _approve_deal_entry(deal):
@@ -1097,6 +1116,37 @@ def _sum_sizes_stems(value):
 			except ValueError:
 				return 0
 	return total
+
+
+def _realign_deal_offer(deal, live_offers):
+	"""Point the deal at the live offer that actually describes it, if its own is gone.
+
+	A deal names the offer it was struck against, but Biflorica re-issues the
+	remainder of a partly-dealt offer under a NEW id, so the id on the deal can
+	name an offer that /offers no longer lists. Everything about the box —
+	its stem lengths, the stems of each and their rates — lives only on the
+	offer, so an unresolvable id costs the order its per-length breakdown and
+	leaves one blended line with no stem length at all.
+
+	Re-matched on variety + box price, which is what identifies the same posting
+	(Athena's predeal 31 named offer 98; offer 96 carried its 40/50/70 at
+	0.30/0.40/0.60 and the same 85.80 box price). A variety with exactly one live
+	offer is taken on its own. Anything less certain is left alone.
+	"""
+	offer_id = str(deal.get("offer") or "")
+	if any(str(o.get("id")) == offer_id for o in live_offers or []):
+		return deal
+
+	variety = deal.get("variety")
+	same_variety = [o for o in live_offers or [] if o.get("variety") == variety]
+	if not same_variety:
+		return deal
+
+	priced = [o for o in same_variety if flt(o.get("price")) == flt(deal.get("price"))]
+	match = priced[0] if len(priced) == 1 else (same_variety[0] if len(same_variety) == 1 else None)
+	if match:
+		deal["offer"] = match.get("id")
+	return deal
 
 
 def _offer_breakdown_map(settings, live_offers=None):
@@ -1846,6 +1896,9 @@ def _append_deal_line(
 		"rate": flt(rate) * conversion_factor,
 		"price_list_rate": flt(rate) * conversion_factor,
 	}
+	# Kept per stem: upande_packhouse reprices Roses orders from Item Price on
+	# every validate, and this is what hold_biflorica_deal_price restores from.
+	_set_line_field(line, soi_meta, "custom_biflorica_rate", flt(rate))
 	# delivery_date only exists on Sales Order Item; harmless to omit on Quotation.
 	if soi_meta.has_field("delivery_date"):
 		line["delivery_date"] = delivery_date
@@ -1894,6 +1947,41 @@ def _append_deal_line(
 	so.append("items", line)
 
 
+def hold_biflorica_deal_price(doc, method=None):
+	"""Restore the buyer's agreed rate on a Biflorica order, after any repricing.
+
+	A deal is a struck trade: the buyer has seen 108.00 on Biflorica and that is
+	what they will be invoiced. upande_packhouse reprices every Roses order from
+	Item Price on validate, which silently replaced the agreed rate with the
+	farm's own list price — the same order read 300.00 in ERP.
+
+	Runs on `before_save`, after that repricing, and only on orders this app
+	created (`po_no` carries the deal ref). Lines with no recorded Biflorica rate
+	are left exactly as they are.
+	"""
+	if not (doc.get("po_no") or "").startswith(BIFLORICA_DEAL_PREFIX):
+		return
+	if not frappe.get_meta(doc.doctype + " Item").has_field("custom_biflorica_rate"):
+		return
+
+	restored = False
+	for item in doc.get("items") or []:
+		agreed = flt(item.get("custom_biflorica_rate"))
+		if not agreed:
+			continue
+		# The stored rate is per STEM; the line sells bunches.
+		rate = agreed * (flt(item.conversion_factor) or 1)
+		if flt(item.rate) != rate or flt(item.price_list_rate) != rate:
+			item.rate = rate
+			item.price_list_rate = rate
+			item.discount_percentage = 0
+			item.discount_amount = 0
+			restored = True
+
+	if restored:
+		doc.calculate_taxes_and_totals()
+
+
 @frappe.whitelist()
 def get_deals(window_from: str | datetime | None = None):
 	try:
@@ -1931,6 +2019,7 @@ def get_deals(window_from: str | datetime | None = None):
 				skipped_past += 1
 				continue
 
+			_realign_deal_offer(deal, live_offers)
 			if not deal.get("stem_length"):
 				offer_size = size_by_offer.get(str(deal.get("offer"))) or size_by_variety.get(
 					deal.get("variety")
@@ -1968,7 +2057,11 @@ def get_deals(window_from: str | datetime | None = None):
 			if status == "created_incomplete":
 				incomplete.append({"deal_id": deal_id, "box_label": label, "sales_order": so_name})
 
-			# SO is in ERPNext -> approve the deal on Biflorica.
+			# Confirming a deal on Biflorica is a commitment, and the order it just
+			# made is a draft nobody has reviewed — so it is opt-in.
+			if not getattr(settings, "deals_auto_approve", 0):
+				continue
+
 			approve_res = _approve_deals(settings, [deal])
 			if approve_res.get("success"):
 				approved.append(deal_id)
@@ -2004,7 +2097,11 @@ def get_deals(window_from: str | datetime | None = None):
 			summary["shared_reason"] = shared_reason
 		parts = []
 		if created:
-			parts.append(f"Created {len(created)} Sales Order(s), approved {len(approved)} deal(s)")
+			parts.append(
+				f"Created {len(created)} Sales Order(s), confirmed {len(approved)} deal(s)"
+				if approved
+				else f"Created {len(created)} Sales Order(s)"
+			)
 		if incomplete:
 			parts.append(f"{len(incomplete)} need a Consignee before submit")
 		if existing_deals:
@@ -2066,6 +2163,7 @@ def get_predeals(window_from: str | datetime | None = None):
 				skipped_past += 1
 				continue
 
+			_realign_deal_offer(deal, live_offers)
 			if not deal.get("stem_length"):
 				offer_size = size_by_offer.get(str(deal.get("offer"))) or size_by_variety.get(
 					deal.get("variety")

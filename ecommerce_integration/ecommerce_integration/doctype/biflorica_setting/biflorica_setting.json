@@ -31,6 +31,7 @@
   "offer_next_run",
   "deals_tab",
   "deals_enabled",
+  "deals_auto_approve",
   "deals_event_frequency",
   "deals_cron_format",
   "column_break_deals",
@@ -222,6 +223,13 @@
    "fieldname": "deals_enabled",
    "fieldtype": "Check",
    "label": "Enabled"
+  },
+  {
+   "default": "0",
+   "description": "Confirm each deal on Biflorica once its Sales Order is created. Off by default: confirming is a commitment, and the order is only a draft until somebody reviews it.",
+   "fieldname": "deals_auto_approve",
+   "fieldtype": "Check",
+   "label": "Confirm Deals on Biflorica"
   },
   {
    "fieldname": "deals_event_frequency",
