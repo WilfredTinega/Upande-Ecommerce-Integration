@@ -354,6 +354,12 @@ def run_sync_deals_and_predeals():
 	# from the moment this run starts (now - frequency). The shared job's cadence
 	# comes from the deals frequency.
 	window_from = _frequency_window_from(settings, "deals")
+	# The Period (hours) can widen that window, never narrow it: a period
+	# shorter than the frequency would leave deals between runs unfetched, and a
+	# longer one only re-reads deals that are skipped as already imported.
+	period_from = _period_window_start(settings, "deals")
+	if window_from and period_from:
+		window_from = min(window_from, period_from)
 
 	result = {"deals": None, "predeals": None}
 	if settings.deals_enabled:
@@ -608,9 +614,15 @@ def post_offers(
 	box_type: str | None = None,
 	packrate: str | int | float | None = None,
 	minimum: str | int | float | None = None,
+	split_lengths: str | int | bool | None = None,
 ):
 	try:
-		result = post_all_items_to_biflorica(box_type=box_type, packrate=packrate, minimum=minimum) or {}
+		result = (
+			post_all_items_to_biflorica(
+				box_type=box_type, packrate=packrate, minimum=minimum, split_lengths=split_lengths
+			)
+			or {}
+		)
 		frappe.db.set_single_value("Biflorica Setting", "offer_last_run", frappe.utils.now_datetime())
 		frappe.db.commit()
 
@@ -633,6 +645,12 @@ def post_offers(
 		success_varieties = []
 		failed_varieties = []
 
+		def offer_label(offer):
+			# With one offer per stem length a variety appears several times;
+			# its size is what tells them apart.
+			variety = offer.get("variety") or "(unknown)"
+			return f"{variety} ({offer['size']})" if offer.get("size") else variety
+
 		if not parsed_results and api_succeeded and posted_offers:
 			# Reached only when the API reported success AND returned a body we could
 			# not parse into per-offer results. An empty body is NOT success — it is
@@ -642,7 +660,7 @@ def post_offers(
 			success_varieties = []
 			failed_varieties = [
 				{
-					"variety": o.get("variety") or "(unknown)",
+					"variety": offer_label(o),
 					"reason": "no confirmation returned by Biflorica",
 				}
 				for o in posted_offers
@@ -653,7 +671,7 @@ def post_offers(
 					continue
 				variety = ""
 				if idx < len(posted_offers):
-					variety = posted_offers[idx].get("variety") or "(unknown)"
+					variety = offer_label(posted_offers[idx])
 				if item_result.get("result") == "ok":
 					success_varieties.append(variety)
 				else:

@@ -3,6 +3,8 @@
 
 const METHOD_BASE =
 	"ecommerce_integration.ecommerce_integration.doctype.biflorica_setting.biflorica_setting";
+const OFFER_API =
+	"ecommerce_integration.ecommerce_integration.doctype.biflorica_setting.biflorica_customer_offer";
 const CUSTOM_FIELDS_API =
 	"ecommerce_integration.ecommerce_integration.doctype.biflorica_setting.biflorica_custom_fields";
 
@@ -283,82 +285,10 @@ frappe.ui.form.on("Biflorica Setting", {
 			return;
 		}
 
-		const d = new frappe.ui.Dialog({
-			title: __("Post Offers to Biflorica"),
-			fields: [
-				{
-					fieldname: "box_type",
-					fieldtype: "Select",
-					label: __("Box Type"),
-					options: ["JUM", "ZIM", "STD", "HB"].join("\n"),
-					default: "JUM",
-					reqd: 1,
-				},
-				{
-					fieldname: "packrate",
-					fieldtype: "Int",
-					label: __("Packrate (stems per box)"),
-					reqd: 1,
-				},
-				{
-					fieldname: "minimum",
-					fieldtype: "Int",
-					label: __("Minimum (boxes)"),
-					default: 1,
-					reqd: 1,
-				},
-			],
-			primary_action_label: __("Post Offers"),
-			primary_action(values) {
-				d.hide();
-				call_biflorica(
-					frm,
-					"post_offers",
-					"post_offers",
-					"Posting offers to Biflorica",
-					{
-						box_type: values.box_type,
-						packrate: values.packrate,
-						minimum: values.minimum,
-					},
-					function (res) {
-						const s = res.summary || {};
-						const ok = s.success_varieties || [];
-						const failed = s.failed_varieties || [];
-
-						if (ok.length) {
-							toast(__("Posted: {0}", [ok.join(", ")]), "green");
-						}
-						// A bad SETTING rejects every offer identically and res.message
-						// already names it, so the per-variety list would just bury it.
-						// A shared *data* reason (an unknown variety, say) still needs the
-						// list — otherwise you cannot see which items to fix.
-						if (failed.length && !s.settings_hint) {
-							const lines = failed.map(function (f) {
-								return f.variety + " (" + (f.reason || "rejected") + ")";
-							});
-							toast(__("Failed: {0}", [lines.join(", ")]), "red");
-						}
-						// Rows dropped before anything was sent: no price, no stock,
-						// no stem length.
-						const skipped = s.skipped_reasons || [];
-						skipped.forEach(function (group) {
-							toast(
-								__("Not offered — {0}: {1}", [
-									group.reason,
-									group.items.join(", "),
-								]),
-								"orange"
-							);
-						});
-						if (!ok.length && !failed.length && !skipped.length) {
-							toast(__("No offers processed"), "orange");
-						}
-					}
-				);
-			},
+		// Box types: Biflorica's codes merged with the site's Box Type records.
+		frappe.xcall(`${OFFER_API}.get_box_type_options`).then((box_types) => {
+			open_post_offers_dialog(frm, box_types || []);
 		});
-		d.show();
 	},
 
 	get_offers(frm) {
@@ -470,3 +400,90 @@ frappe.ui.form.on("Biflorica Setting", {
 		);
 	},
 });
+
+// Post Offers dialog; `box_types` from get_box_type_options.
+function open_post_offers_dialog(frm, box_types) {
+	const d = new frappe.ui.Dialog({
+		title: __("Post Offers to Biflorica"),
+		fields: [
+			{
+				fieldname: "box_type",
+				fieldtype: "Select",
+				label: __("Box Type"),
+				options: box_types.join("\n"),
+				default: box_types[0],
+				reqd: 1,
+			},
+			{
+				fieldname: "packrate",
+				fieldtype: "Int",
+				label: __("Packrate (stems per box)"),
+				reqd: 1,
+			},
+			{
+				fieldname: "split_lengths",
+				fieldtype: "Check",
+				label: __("One offer per stem length"),
+				description: __(
+					"Post each stem length as its own offer instead of one box of every length."
+				),
+				default: 0,
+			},
+			{
+				fieldname: "minimum",
+				fieldtype: "Int",
+				label: __("Minimum (boxes)"),
+				default: 1,
+				reqd: 1,
+			},
+		],
+		primary_action_label: __("Post Offers"),
+		primary_action(values) {
+			d.hide();
+			call_biflorica(
+				frm,
+				"post_offers",
+				"post_offers",
+				"Posting offers to Biflorica",
+				{
+					box_type: values.box_type,
+					packrate: values.packrate,
+					minimum: values.minimum,
+					split_lengths: values.split_lengths ? 1 : 0,
+				},
+				function (res) {
+					const s = res.summary || {};
+					const ok = s.success_varieties || [];
+					const failed = s.failed_varieties || [];
+
+					if (ok.length) {
+						toast(__("Posted: {0}", [ok.join(", ")]), "green");
+					}
+					// A bad SETTING rejects every offer identically and res.message
+					// already names it, so the per-variety list would just bury it.
+					// A shared *data* reason (an unknown variety, say) still needs the
+					// list — otherwise you cannot see which items to fix.
+					if (failed.length && !s.settings_hint) {
+						const lines = failed.map(function (f) {
+							return f.variety + " (" + (f.reason || "rejected") + ")";
+						});
+						toast(__("Failed: {0}", [lines.join(", ")]), "red");
+					}
+					// Rows dropped before anything was sent: no price, no stock,
+					// no stem length.
+					const skipped = s.skipped_reasons || [];
+					skipped.forEach(function (group) {
+						toast(
+							__("Not offered — {0}: {1}", [group.reason, group.items.join(", ")]),
+							"orange"
+						);
+					});
+					if (!ok.length && !failed.length && !skipped.length) {
+						toast(__("No offers processed"), "orange");
+					}
+				}
+			);
+		},
+	});
+	d.show();
+}
