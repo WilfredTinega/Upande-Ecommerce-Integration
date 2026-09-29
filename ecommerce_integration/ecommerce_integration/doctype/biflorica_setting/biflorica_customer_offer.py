@@ -63,11 +63,32 @@ def _clean_farm_code(farm):
 	return str(farm).split("(", 1)[0].strip()
 
 
+# The box codes Biflorica's own offers use; always offered, whatever else exists.
+BIFLORICA_BOX_TYPES = ("JUM", "ZIM", "STD", "HB")
+
+
+@frappe.whitelist()
+def get_box_type_options():
+	"""Box types for the Post Offers dialogs: Biflorica's codes plus every Box Type.
+
+	`Box Type` belongs to upande_packhouse; on a site without it only the
+	Biflorica codes are offered. A name Biflorica does not accept comes back as a
+	rejected offer with Biflorica's reason, the same as any other bad value.
+	"""
+	options = list(BIFLORICA_BOX_TYPES)
+	if frappe.db.exists("DocType", "Box Type"):
+		for name in frappe.get_all("Box Type", pluck="name", order_by="name asc"):
+			if name and name not in options:
+				options.append(name)
+	return options
+
+
 @frappe.whitelist()
 def post_all_items_to_biflorica(
 	box_type: str | None = None,
 	packrate: str | int | float | None = None,
 	minimum: str | int | float | None = None,
+	split_lengths: str | int | bool | None = None,
 ):
 	try:
 		if not frappe.db.exists("Biflorica Setting", "Biflorica Setting"):
@@ -117,7 +138,12 @@ def post_all_items_to_biflorica(
 		_logger.info(f"[Biflorica Sync] Processing {len(items_data)} enabled items")
 
 		offers_payload, individual_offers = prepare_offers_payload_with_details(
-			items_data, settings, box_type=box_type, packrate=packrate, minimum=minimum
+			items_data,
+			settings,
+			box_type=box_type,
+			packrate=packrate,
+			minimum=minimum,
+			split_lengths=split_lengths,
 		)
 
 		_logger.info("[Biflorica Payload] FINAL PAYLOAD BEING SENT TO BIFLORICA:")
@@ -572,7 +598,28 @@ def _slash(values):
 	return "/".join(str(v) for v in values)
 
 
-def prepare_offers_payload_with_details(items_data, settings, box_type=None, packrate=None, minimum=None):
+def _split_packing(packrate, lengths, stock):
+	"""{length: stems in one box}, summing to exactly `packrate`.
+
+	Biflorica shows a box's packing as the sum of `sizesStems`, not the `packing`
+	sent alongside it, so an even floor split under-packs the box: 200 stems over
+	three lengths went out as 66/66/66 and listed as a box of 198. The remainder
+	is handed out one stem at a time to the lengths with the most stock, which
+	are the ones least likely to be what caps the number of boxes.
+
+	Returns {} when there are more lengths than stems.
+	"""
+	count = len(lengths)
+	if not count or packrate < count:
+		return {}
+	base, extra = divmod(packrate, count)
+	by_stock = sorted(lengths, key=lambda size: (-flt(stock[size]["qty"]), flt(size)))
+	return {size: base + (1 if size in by_stock[:extra] else 0) for size in lengths}
+
+
+def prepare_offers_payload_with_details(
+	items_data, settings, box_type=None, packrate=None, minimum=None, split_lengths=None
+):
 	"""Build offers in the exact shape `GET /offers` returns.
 
 	One offer is ONE BOX spanning every enabled stem length of a variety — not
@@ -580,7 +627,7 @@ def prepare_offers_payload_with_details(items_data, settings, box_type=None, pac
 
 	    size          "40/50/60"        the lengths, ascending
 	    pricePerStem  "0.20/0.25/0.30"  one rate per length, parallel to `size`
-	    sizesStems    "66/66/66"        stems of each length inside ONE box
+	    sizesStems    "67/67/66"        stems of each length in ONE box; sums to packing
 	    packing       200               nominal stems per box (int)
 	    quantity      "3.0"             number of BOXES, not stems
 	    price         "49.50"           box price = sum(rate_i * stems_i)
@@ -591,6 +638,10 @@ def prepare_offers_payload_with_details(items_data, settings, box_type=None, pac
 
 	`minimum` is accepted so existing callers keep working but is NOT sent — the
 	live offer structure carries no such field.
+
+	`split_lengths` posts one offer per stem length instead: each is a box of
+	`packrate` stems of that one length at its own rate, and its box count comes
+	from that length's stock alone, so a scarce length no longer caps the others.
 	"""
 	# `or 1`, not just a getattr default: Biflorica Setting has no such field, so
 	# a mapping-like settings object answers None rather than raising, and
@@ -674,6 +725,13 @@ def prepare_offers_payload_with_details(items_data, settings, box_type=None, pac
 		else:
 			group["lengths"][stem_length] = {"qty": quantity, "rate": price_per_stem}
 
+	if cint(split_lengths):
+		groups = {
+			(key, size): {**group, "lengths": {size: row}}
+			for key, group in groups.items()
+			for size, row in group["lengths"].items()
+		}
+
 	now = datetime.now()
 	date_start = now.strftime("%Y-%m-%d %H:%M:%S")
 	date_end = (now + timedelta(days=offer_duration_days)).strftime("%Y-%m-%d %H:%M:%S")
@@ -683,31 +741,30 @@ def prepare_offers_payload_with_details(items_data, settings, box_type=None, pac
 		item = group["item"]
 		lengths = sorted(group["lengths"], key=lambda size: flt(size))
 
-		# The box is split evenly across its lengths, the way live offer 74 is
-		# (9 sizes x 22 stems against a nominal packing of 200).
-		stems_each = packrate // len(lengths)
-		if stems_each <= 0:
+		stems_by_size = _split_packing(packrate, lengths, group["lengths"])
+		if not stems_by_size:
 			skip(
 				item,
 				f"Packing of {packrate} cannot be split across {len(lengths)} stem lengths",
 				stem_lengths=lengths,
 			)
 			continue
+		stems = [stems_by_size[size] for size in lengths]
 
-		# A box needs `stems_each` of EVERY length, so the scarcest length caps how
+		# A box needs its share of EVERY length, so the scarcest length caps how
 		# many whole boxes can be offered.
-		boxes = min(int(flt(group["lengths"][size]["qty"]) // stems_each) for size in lengths)
+		boxes = min(int(flt(group["lengths"][size]["qty"]) // stems_by_size[size]) for size in lengths)
 		if boxes <= 0:
 			skip(
 				item,
-				f"Not enough stock for one full box ({stems_each} stems of each of {len(lengths)} lengths)",
+				f"Not enough stock for one full box ({_slash(stems)} stems of {_slash(lengths)})",
 				stem_lengths=lengths,
 				available={size: group["lengths"][size]["qty"] for size in lengths},
 			)
 			continue
 
 		rates = [flt(group["lengths"][size]["rate"]) for size in lengths]
-		box_price = round(sum(rate * stems_each for rate in rates), 2)
+		box_price = round(sum(rate * n for rate, n in zip(rates, stems, strict=True)), 2)
 
 		offer = {
 			"dateStart": date_start,
@@ -720,7 +777,7 @@ def prepare_offers_payload_with_details(items_data, settings, box_type=None, pac
 			"pictureURL": get_picture_url(item),
 			"size": _slash(lengths),
 			"pricePerStem": _slash(f"{rate:.2f}" for rate in rates),
-			"sizesStems": _slash([stems_each] * len(lengths)),
+			"sizesStems": _slash(stems),
 			"price": f"{box_price:.2f}",
 			"packing": packrate,
 			"quantity": f"{float(boxes):.1f}",
@@ -731,7 +788,7 @@ def prepare_offers_payload_with_details(items_data, settings, box_type=None, pac
 
 		_logger.info(
 			f"[Biflorica Offer] {group['variety']}: sizes {offer['size']} | "
-			f"{stems_each} stems each | {boxes} box(es) of {packrate} | box price {offer['price']}"
+			f"{offer['sizesStems']} stems | {boxes} box(es) of {packrate} | box price {offer['price']}"
 		)
 		details.append(
 			{
@@ -742,7 +799,7 @@ def prepare_offers_payload_with_details(items_data, settings, box_type=None, pac
 				"payload": offer,
 				"source_data": {
 					"stem_lengths": lengths,
-					"stems_per_length_in_box": stems_each,
+					"stems_per_length_in_box": stems_by_size,
 					"boxes": boxes,
 					"box_type": box_type,
 					"packing": packrate,

@@ -491,6 +491,45 @@ class TestBifloricaOfferPayload(IntegrationTestCase):
 		# Box price = 50 * (0.20 + 0.25 + 0.30).
 		self.assertEqual(offer["price"], "37.50")
 
+	def test_box_stems_add_up_to_the_packrate(self):
+		"""Biflorica lists a box's packing as the sum of sizesStems.
+
+		200 over three lengths used to go out as 66/66/66 and show as a box of
+		198. The two left-over stems go to the lengths with the most stock.
+		"""
+		items = [
+			self._item(stem_length="40cm", price_per_stem=0.30, actual_qty=1000),
+			self._item(stem_length="50cm", price_per_stem=0.40, actual_qty=400),
+			self._item(stem_length="70cm", price_per_stem=0.60, actual_qty=700),
+		]
+		payload, _ = prepare_offers_payload_with_details(items, self.settings, box_type="JUM", packrate=200)
+		offer = payload["data"][0]
+		self.assertEqual(offer["sizesStems"], "67/66/67")
+		self.assertEqual(sum(int(n) for n in offer["sizesStems"].split("/")), 200)
+		self.assertEqual(offer["packing"], 200)
+		# 50cm caps it: 400 // 66 = 6 boxes.
+		self.assertEqual(offer["quantity"], "6.0")
+		# 67 * 0.30 + 66 * 0.40 + 67 * 0.60
+		self.assertEqual(offer["price"], "86.70")
+
+	def test_split_lengths_posts_one_offer_per_stem_length(self):
+		"""Each length becomes its own box of `packrate` stems, counted on its own stock."""
+		items = [
+			self._item(stem_length="40cm", price_per_stem=0.30, actual_qty=1000),
+			self._item(stem_length="50cm", price_per_stem=0.40, actual_qty=400),
+		]
+		payload, _ = prepare_offers_payload_with_details(
+			items, self.settings, box_type="JUM", packrate=200, split_lengths=1
+		)
+		offers = {o["size"]: o for o in payload["data"]}
+		self.assertEqual(set(offers), {"40", "50"})
+		self.assertEqual(offers["40"]["sizesStems"], "200")
+		self.assertEqual(offers["40"]["pricePerStem"], "0.30")
+		self.assertEqual(offers["40"]["price"], "60.00")
+		# The scarce 50cm no longer caps 40cm: 1000 // 200 and 400 // 200.
+		self.assertEqual(offers["40"]["quantity"], "5.0")
+		self.assertEqual(offers["50"]["quantity"], "2.0")
+
 	def test_the_scarcest_length_caps_the_box_count(self):
 		"""Every box needs all its lengths, so the thinnest one is the limit."""
 		items = [

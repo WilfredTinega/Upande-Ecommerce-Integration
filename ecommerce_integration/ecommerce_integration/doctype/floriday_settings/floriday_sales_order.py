@@ -580,8 +580,13 @@ def _force_floriday_amounts_in_db(sales_order):
 
 
 @frappe.whitelist()
-def create_sales_orders_from_floriday():
-	"""Fetch Floriday orders from the last 24 hours and create matching Sales Orders."""
+def create_sales_orders_from_floriday(period_hours: int | str | None = None):
+	"""Fetch recent Floriday orders and create matching Sales Orders.
+
+	`period_hours` overrides Floriday Settings' Period for this one run (the
+	packhouse portal's look-back picker); omitted, the setting applies.
+	"""
+	override_hours = period_hours
 	try:
 		settings = frappe.get_single("Floriday Settings")
 
@@ -602,7 +607,7 @@ def create_sales_orders_from_floriday():
 		# Window goes back `period` hours from now (configurable on Floriday Settings).
 		# Fall back to 24h if the field is unset/zero/invalid.
 		try:
-			period_hours = int(settings.period or 0)
+			period_hours = int(override_hours or settings.period or 0)
 		except (TypeError, ValueError):
 			period_hours = 0
 		if period_hours <= 0:

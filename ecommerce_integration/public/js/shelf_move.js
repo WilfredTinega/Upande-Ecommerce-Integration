@@ -31,6 +31,19 @@ ecommerce_integration.GET_STOCK_PRICES =
 ecommerce_integration.SET_STOCK_PRICE =
 	"ecommerce_integration.ecommerce_integration.utils.stock_picker.set_stock_price";
 
+// Stems a channel only takes in whole multiples of (stock_picker.CHANNEL_QTY_MULTIPLE):
+// Floriday batches go up in 200s.
+ecommerce_integration.CHANNEL_QTY_MULTIPLE = { Floriday: 200 };
+
+// Qty step for one row: whole bunches, and whole channel multiples where the
+// channel has one.
+ecommerce_integration.qty_step = function (channel, bunch) {
+	bunch = Math.max(1, Math.floor(Number(bunch) || 1));
+	const m = ecommerce_integration.CHANNEL_QTY_MULTIPLE[channel] || 1;
+	const gcd = (a, b) => (b ? gcd(b, a % b) : a);
+	return (bunch * m) / gcd(bunch, m);
+};
+
 ecommerce_integration.GET_CUSTOMER_WAREHOUSE_ROWS =
 	"ecommerce_integration.ecommerce_integration.utils.stock_picker.get_customer_warehouse_rows";
 
@@ -243,7 +256,7 @@ ecommerce_integration._render_shelf_rows = function (
 	const body = combined_rows
 		.map((r, i) => {
 			const qty = Math.floor(Number(r.total) || 0);
-			const step = Math.max(1, Math.floor(Number(r.bunch_size) || 1));
+			const step = ecommerce_integration.qty_step(channel, r.bunch_size);
 			// Never publish more than is physically available. The ceiling is the
 			// available qty snapped down to a whole bunch. For an already-published
 			// row whose shelf stock has since gone (qty 0), keep its current
@@ -648,7 +661,7 @@ ecommerce_integration._set_selected_enabled = function ($root, frm, channel, fie
 	// For the customer source, tell the server which warehouse the stock is from so
 	// its cap includes that warehouse (the items aren't in the default shelf/
 	// configured-warehouse sets, so otherwise every row caps to 0).
-	const enable_args = { items: JSON.stringify(items), enabled: enable ? 1 : 0 };
+	const enable_args = { items: JSON.stringify(items), enabled: enable ? 1 : 0, channel };
 	if ($root.data("source") === "customer" && $root.data("warehouse")) {
 		enable_args.source_warehouse = $root.data("warehouse");
 	}
@@ -682,6 +695,12 @@ ecommerce_integration._set_selected_enabled = function ($root, frm, channel, fie
 				if (capped) {
 					// Server reduced one or more qty to the available stock.
 					message += " " + __("{0} capped to available stock.", [capped]);
+					indicator = "orange";
+				}
+				const below = (r.message && r.message.below_multiple) || 0;
+				if (below) {
+					message +=
+						" " + __("{0} skipped: under {1} stems.", [below, r.message.multiple]);
 					indicator = "orange";
 				}
 			} else {

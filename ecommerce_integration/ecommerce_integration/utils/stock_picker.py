@@ -39,6 +39,11 @@ from ecommerce_integration.ecommerce_integration.utils.stem_length import (
 # Owned by the post-harvest suite; present on farm sites, absent elsewhere.
 SHELF_ITEM = "Shelf Item"
 
+# Stems a channel only accepts in whole multiples of. Floriday batches go up in
+# 200s (see floriday_settings.get_floriday_batch_rows), so a qty enabled from the
+# Floriday picker is floored to 200 here rather than silently at batch time.
+CHANNEL_QTY_MULTIPLE = {"Floriday": 200}
+
 
 def _has_doctype(name):
 	return bool(frappe.db.exists("DocType", name))
@@ -238,6 +243,7 @@ def set_enabled_stock(
 	items: str | list,
 	enabled: str | int | bool = 1,
 	source_warehouse: str | None = None,
+	channel: str | None = None,
 ):
 	"""Enable (or disable) per-length stock for the sales channels. No stock move.
 
@@ -250,7 +256,11 @@ def set_enabled_stock(
 	API call cannot over-offer. `source_warehouse` adds that warehouse's Bin stock
 	to the cap, for items that live only there.
 
-	Returns {updated, items, capped}. No rate is written: the per-stem price is
+	`channel` applies that channel's qty multiple (CHANNEL_QTY_MULTIPLE): the qty
+	is floored to it, and a row that cannot reach one multiple is not enabled —
+	it is counted in `below_multiple` instead.
+
+	Returns {updated, items, capped, below_multiple, multiple}. No rate is written: the per-stem price is
 	resolved at read time from `Item Price` and the post-harvest `Stem Length`
 	master.
 	"""
@@ -265,8 +275,11 @@ def set_enabled_stock(
 			key = (r.get("item_code"), _canon_length(r.get("stem_length")))
 			avail[key] = avail.get(key, 0.0) + flt(r.get("shelf_qty"))
 
+	multiple = CHANNEL_QTY_MULTIPLE.get((channel or "").strip().title(), 1)
+
 	updated = 0
 	capped = 0
+	below_multiple = 0
 	touched_items = []
 	for entry in items or []:
 		item_code = (entry.get("item_code") or "").strip()
@@ -282,6 +295,11 @@ def set_enabled_stock(
 			if qty > available:
 				qty = available
 				capped += 1
+			if multiple > 1:
+				qty = int(qty // multiple * multiple)
+				if qty <= 0:
+					below_multiple += 1
+					continue
 
 		canon = _canon_length(stem_length) or stem_length
 		name = _enabled_stock_name(item_code, stem_length)
@@ -302,7 +320,13 @@ def set_enabled_stock(
 	# Each row was saved in its own iteration above; commit so a failure on a
 	# later row cannot roll back what is already enabled.
 	frappe.db.commit()  # nosemgrep: frappe-manual-commit
-	return {"updated": updated, "items": touched_items, "capped": capped}
+	return {
+		"updated": updated,
+		"items": touched_items,
+		"capped": capped,
+		"below_multiple": below_multiple,
+		"multiple": multiple,
+	}
 
 
 def _picker_price_list(settings_doctype=None):

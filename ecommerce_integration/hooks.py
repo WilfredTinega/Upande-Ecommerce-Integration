@@ -198,6 +198,10 @@ doc_events = {
 		# on Biflorica. upande_packhouse reprices Roses orders from Item Price on
 		# validate, so this runs after it and puts the agreed rate back.
 		"before_save": "ecommerce_integration.ecommerce_integration.doctype.biflorica_setting.biflorica_setting.hold_biflorica_deal_price",
+		# A Biflorica deal is a struck trade: the buyer has already seen its value
+		# on Biflorica. upande_packhouse reprices Roses orders from Item Price on
+		# validate, so this runs after it and puts the agreed rate back.
+		"before_save": "ecommerce_integration.ecommerce_integration.doctype.biflorica_setting.biflorica_setting.hold_biflorica_deal_price",
 		# Submitting is the confirmation step for both channels: a Biflorica
 		# preorder is approved on Biflorica, and a Floriday order is fulfilled on
 		# Floriday. Biflorica's runs inline and blocks the submit if it is
