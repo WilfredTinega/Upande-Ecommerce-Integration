@@ -6,7 +6,7 @@ import re
 import frappe
 from frappe import _
 from frappe.model.document import Document
-from frappe.utils import cint, cstr, flt, get_url, nowdate
+from frappe.utils import cint, cstr, flt, nowdate
 
 STEM_LENGTH = "Stem Length"
 
@@ -78,29 +78,6 @@ def bunch_uom_for(item_code):
 	return sales_uom, stems
 
 
-def _pick_list_qr(pick_name):
-	"""Attach a QR of the pick list's own desk URL, or None if it cannot be made.
-
-	Reuses the Upande Tambuzi generator so the code a scanner reads off a Shopify
-	pick list is the same one every other pick list on that site carries.
-
-	A nicety, not the point of the document: on a site without that app, or
-	without the `qrcode` library, the pick list is still raised and submitted.
-	"""
-	try:
-		from upande_tambuzi.server_scripts.opl_qr_code_gen import generate_qr_code
-	except ImportError:
-		return None
-
-	try:
-		return generate_qr_code(f"{get_url()}/app/order-pick-list/{pick_name}", pick_name)
-	except Exception:
-		frappe.log_error(
-			title=f"Order Pick List {pick_name}: QR code not generated",
-			message=frappe.get_traceback(),
-		)
-		return None
-
 
 def _packing_state(allocation):
 	"""{fpl, percent, complete} for an allocation, read straight off the pack list.
@@ -139,163 +116,6 @@ def _packing_state(allocation):
 		"complete": bool(cint(pack.custom_complete) or percent >= 100),
 	}
 
-
-def _allocation_of_pack_list(doc):
-	"""The Shopify Allocation a Farm Pack List belongs to, or None.
-
-	Every hook below is fenced on this: a farm pack list must behave exactly as it
-	did before, so anything that cannot be traced back to an allocation is left
-	completely alone.
-	"""
-	pick = doc.get("custom_order_pick_list")
-	if not pick:
-		return None
-	allocation = frappe.db.get_value("Order Pick List", pick, "custom_shopify_allocation")
-	if not allocation or not frappe.db.exists("Shopify Allocation", allocation):
-		return None
-	return allocation
-
-
-def name_shopify_pack_list(doc, method=None):
-	"""Name a Shopify pack list without a Sales Order.
-
-	`Farm Pack List` is named on that site by a Property Setter,
-	`format: {custom_abbreviation}-{custom_sales_order}`, and a Shopify pack list
-	has no Sales Order - so every one of them would be named `BUR-` and the second
-	would collide, inside the packing scanner, on the packhouse's second scan.
-
-	Hooked on `autoname` rather than `before_naming` deliberately: `set_new_name`
-	blanks `doc.name` after `before_naming` runs and before `autoname`, so a name
-	set any earlier is thrown away. Setting it here also stops the format being
-	applied at all, while a farm pack list - where this returns without setting a
-	name - still goes through that format exactly as before.
-	"""
-	if doc.get("name") or doc.get("custom_sales_order"):
-		return
-	allocation = _allocation_of_pack_list(doc)
-	if not allocation:
-		return
-
-	order, index = frappe.db.get_value("Shopify Allocation", allocation, ["shopify_order", "delivery_index"])
-	abbr = cstr(doc.get("custom_abbreviation") or "").strip()
-	stem = "-".join(part for part in (abbr, cstr(order or allocation), cstr(cint(index) or 1)) if part)
-	doc.name = stem
-
-
-def apply_shopify_pack_list_defaults(doc, method=None):
-	"""Fill what a Shopify pack list cannot fetch from a Sales Order.
-
-	`custom_customer`, `custom_customer_address`, `custom_comment` and
-	`custom_currency` are all `fetch_from` a Sales Order on that site. With no
-	Sales Order the fetch never runs - frappe skips a link field that is empty -
-	so they stay blank and the printed pack list and box label say nothing about
-	who the flowers are for. They are written from the allocation instead.
-
-	`custom_farm` and `custom_abbreviation` come off the source warehouse, which is
-	how the scanner already derives the farm.
-	"""
-	allocation = _allocation_of_pack_list(doc)
-	if not allocation:
-		return
-
-	alloc = frappe.get_doc("Shopify Allocation", allocation)
-	if not doc.get("custom_customer"):
-		# The buying Customer, not the recipient. This lands on `Box Label.customer`,
-		# which is a Link - a gift recipient is not a Customer record and writing
-		# their name here fails link validation and stops the label being made. The
-		# recipient travels as the consignee, which is what a consignee is.
-		doc.custom_customer = cstr(alloc.customer)
-	if not doc.get("custom_customer_address"):
-		who = cstr(alloc.recipient_name or "").strip()
-		where = cstr(alloc.shipping_address or "").strip()
-		doc.custom_customer_address = " - ".join(p for p in (who, where) if p)
-	if not doc.get("custom_comment"):
-		doc.custom_comment = alloc.delivery_label()
-
-	if not doc.get("custom_farm"):
-		warehouse = alloc.source_warehouse or ""
-		farm = warehouse.split(" ")[0] if warehouse else ""
-		if farm and frappe.db.exists("Farm", farm):
-			doc.custom_farm = farm
-	if doc.get("custom_farm") and not doc.get("custom_abbreviation"):
-		doc.custom_abbreviation = frappe.db.get_value("Farm", doc.custom_farm, "abbreviation")
-
-	if not doc.get("custom_currency"):
-		# Named in the docstring above but never actually written. A Shopify order
-		# settles in whatever Shopify charged, and the pack list prints it.
-		order = frappe.db.get_value("Shopify Allocation", allocation, "shopify_order")
-		if order:
-			doc.custom_currency = cstr(frappe.db.get_value("Shopify Order", order, "currency"))
-
-	if not cint(doc.get("custom_picked_total_stems")):
-		# What the pack list is measured against: that site computes completion as
-		# `custom_total_stems / custom_picked_total_stems`, and the script that fills
-		# the divisor sums a Sales Order's lines. A Shopify pack list has none, so the
-		# divisor stayed empty and every packing scan died on it - either dividing by
-		# zero or, when the raw Data string reached it, "unsupported operand type(s)
-		# for /: 'int' and 'str'". The pick list already carries the figure.
-		picked = frappe.db.get_value("Order Pick List", doc.custom_order_pick_list, "custom_total_stems")
-		doc.custom_picked_total_stems = cint(flt(picked))
-
-	if not doc.get("custom_delivery_point") and frappe.db.exists("DocType", "Delivery Points"):
-		# A Link to a controlled list of freight agents and destinations, so a street
-		# address cannot go in it; the city is the only part that can match a record.
-		# The address itself travels on custom_customer_address and on each row.
-		city = cstr(alloc.shipping_city or "").strip().upper()
-		if city and frappe.db.exists("Delivery Points", city):
-			doc.custom_delivery_point = city
-
-	# Rows the packing scanner appends are built from the pick list, so they carry no
-	# consignee, no delivery point and no farm - all three are Sales Order fetches on
-	# that site. Fill them the same way, without touching a row someone edited.
-	for row in doc.get("pack_list_item") or []:
-		if not row.get("customer_id"):
-			row.customer_id = cstr(alloc.customer)
-		if not row.get("custom_consignee"):
-			row.custom_consignee = cstr(alloc.recipient_name)
-		if not row.get("delivery_point"):
-			row.delivery_point = cstr(alloc.shipping_address)
-		if not row.get("custom_source_farm") and doc.get("custom_farm"):
-			row.custom_source_farm = doc.custom_farm
-
-
-def carry_stem_length_to_pack_list(doc, method=None):
-	"""Copy each row's stem length down from the pick list when it is missing.
-
-	The packhouse packs TO a length, and a row that lost it cannot be graded
-	against. Only ever fills an empty one, never overwrites a choice, and only on
-	a pack list that belongs to an allocation.
-	"""
-	if not _allocation_of_pack_list(doc):
-		return
-	picked = {}
-	for loc in frappe.get_all(
-		"Pick List Item",
-		filters={"parent": doc.custom_order_pick_list},
-		fields=["item_code", "custom_lgth"],
-	):
-		if loc.custom_lgth:
-			picked.setdefault(loc.item_code, loc.custom_lgth)
-	for row in doc.get("pack_list_item") or []:
-		if not row.get("stem_length"):
-			want = picked.get(row.item_code)
-			if want:
-				row.stem_length = want
-
-
-def sync_allocation_packed_status(doc, method=None):
-	"""Farm Pack List hook: keep the allocation's status in step with packing.
-
-	Only for pack lists that belong to a Shopify allocation - the farm's own pack
-	lists have nothing to do with this doctype.
-	"""
-	pick = doc.get("custom_order_pick_list")
-	if not pick:
-		return
-	allocation = frappe.db.get_value("Order Pick List", pick, "custom_shopify_allocation")
-	if not allocation or not frappe.db.exists("Shopify Allocation", allocation):
-		return
-	frappe.get_doc("Shopify Allocation", allocation).sync_packed_status()
 
 
 class ShopifyAllocation(Document):
@@ -533,15 +353,6 @@ class ShopifyAllocation(Document):
 		pick.custom_total_stems = cstr(total_stems)
 		pick.insert(ignore_permissions=True)
 
-		qr = _pick_list_qr(pick.name)
-		if qr:
-			# The generator writes `custom_qr_code` straight to the row, which bumps
-			# `modified` in the database. Submitting the copy held here would then
-			# fail the concurrency check outright - a TimestampMismatchError inside
-			# a guarded block, so the pick list is silently left in Draft and the
-			# packhouse cannot pick it. Re-read before submitting, which also picks
-			# the QR up rather than saving the stale empty value back over it.
-			pick.reload()
 
 		# Submitting only flips docstatus. Order Pick List has an empty controller
 		# on that site - no stock movement, no eTIMS - which is why the farm's own
