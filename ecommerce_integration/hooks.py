@@ -178,21 +178,6 @@ doc_events = {
 	"Delivery Point": {
 		"after_rename": "ecommerce_integration.ecommerce_integration.doctype.floriday_settings.floriday_sales_order.on_delivery_point_renamed",
 	},
-	# Packed is not a button on the allocation: it is what the pack list says.
-	# `custom_completion_percentage` / `custom_complete` are maintained there as
-	# boxes are actually filled, so the allocation follows them rather than
-	# letting anyone declare an order packed the packhouse has not finished.
-	"Farm Pack List": {
-		# A Shopify pack list has no Sales Order, and that site names, fills and
-		# labels a pack list off one. Each of these is fenced on the pick list
-		# belonging to an allocation, so a farm pack list is untouched.
-		"autoname": "ecommerce_integration.ecommerce_integration.doctype.shopify_allocation.shopify_allocation.name_shopify_pack_list",
-		"before_insert": "ecommerce_integration.ecommerce_integration.doctype.shopify_allocation.shopify_allocation.apply_shopify_pack_list_defaults",
-		"before_save": "ecommerce_integration.ecommerce_integration.doctype.shopify_allocation.shopify_allocation.carry_stem_length_to_pack_list",
-		"on_update": "ecommerce_integration.ecommerce_integration.doctype.shopify_allocation.shopify_allocation.sync_allocation_packed_status",
-		"on_submit": "ecommerce_integration.ecommerce_integration.doctype.shopify_allocation.shopify_allocation.sync_allocation_packed_status",
-		"on_cancel": "ecommerce_integration.ecommerce_integration.doctype.shopify_allocation.shopify_allocation.sync_allocation_packed_status",
-	},
 	"Sales Order": {
 		# A Biflorica deal is a struck trade: the buyer has already seen its value
 		# on Biflorica. upande_packhouse reprices Roses orders from Item Price on
@@ -243,19 +228,6 @@ doc_events = {
 # `ecommerce_integration.setup.ci.setup_test_site` explicitly, which covers this
 # plus the external link-target stubs, so tests hold up either way.
 before_tests = "erpnext.setup.utils.before_tests"
-
-# Override DocType Class
-# ------------------------------
-#
-# The packing chain is upande_tambuzi's. A Shopify pack list has no Sales Order,
-# and that app's controller assumes one on the Reviewed transition, so the class
-# is SUBCLASSED here rather than edited there: a farm pack list runs the original
-# code through super() and keeps its OPL, FPL, box label and dispatch behaviour
-# exactly as it was, and only a pack list traced back to a Shopify Allocation
-# takes the other branch. See overrides/farm_pack_list.py for what differs.
-override_doctype_class = {
-	"Farm Pack List": "ecommerce_integration.overrides.farm_pack_list.ShopifyAwareFarmPackList",
-}
 
 # Extend DocType Class
 # ------------------------------

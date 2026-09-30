@@ -331,29 +331,6 @@ class TestPickListIsRaisedReadyToPick(IntegrationTestCase):
 		body = body[: body.index("\n\t@frappe.whitelist()")]
 		self.assertIn("pick.submit()", body)
 
-	def test_the_qr_is_generated_from_the_pick_lists_own_desk_url(self):
-		"""Same payload the farm's own generator writes, so one scanner reads both."""
-		self.assertIn("/app/order-pick-list/", self.py)
-		self.assertIn("upande_tambuzi.server_scripts.opl_qr_code_gen", self.py)
-
-	def test_a_missing_qr_library_does_not_stop_the_pick_list(self):
-		"""The QR is a nicety; the document is the point."""
-		helper = self.py[self.py.index("def _pick_list_qr") :]
-		helper = helper[: helper.index("\nclass ")]
-		self.assertIn("except ImportError:", helper)
-		self.assertIn("return None", helper)
-
-	def test_the_generator_result_reaches_the_submitted_doc(self):
-		"""The generator writes the row itself, bumping `modified` in the database.
-
-		Submitting the copy held in memory would then either save the stale empty
-		value back over the QR or fail the concurrency check outright, so the doc
-		is re-read between generating and submitting.
-		"""
-		body = self.py[self.py.index("qr = _pick_list_qr(") :]
-		body = body[: body.index("pick.submit()")]
-		self.assertIn("pick.reload()", body)
-
 	def test_the_board_only_draws_a_qr_when_one_is_missing(self):
 		"""Otherwise it would overwrite the server-drawn code after the deploy."""
 		self.assertIn("if (!opl || opl.custom_qr_code) return;", self.js)

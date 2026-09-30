@@ -24,7 +24,14 @@ from ecommerce_integration.testing import IntegrationTestCase
 
 # Sibling Upande apps this one must never import. Not an exhaustive list of what
 # exists — a list of what this app has previously leaned on.
-SIBLING_APPS = ("upande_webshop", "upande_packhouse", "upande_harvest", "upande_core", "upande_kaitet")
+SIBLING_APPS = (
+	"upande_webshop",
+	"upande_packhouse",
+	"upande_harvest",
+	"upande_core",
+	"upande_kaitet",
+	"upande_tambuzi",
+)
 
 APP_ROOT = pathlib.Path(frappe.get_app_path("ecommerce_integration"))
 REPO_ROOT = APP_ROOT.parent
