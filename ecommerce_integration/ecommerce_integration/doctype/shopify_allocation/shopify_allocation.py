@@ -78,7 +78,6 @@ def bunch_uom_for(item_code):
 	return sales_uom, stems
 
 
-
 def _packing_state(allocation):
 	"""{fpl, percent, complete} for an allocation, read straight off the pack list.
 
@@ -115,7 +114,6 @@ def _packing_state(allocation):
 		"percent": percent,
 		"complete": bool(cint(pack.custom_complete) or percent >= 100),
 	}
-
 
 
 class ShopifyAllocation(Document):
@@ -352,7 +350,6 @@ class ShopifyAllocation(Document):
 		# Data field on that site, not an Int.
 		pick.custom_total_stems = cstr(total_stems)
 		pick.insert(ignore_permissions=True)
-
 
 		# Submitting only flips docstatus. Order Pick List has an empty controller
 		# on that site - no stock movement, no eTIMS - which is why the farm's own
