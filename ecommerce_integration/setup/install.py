@@ -1,8 +1,8 @@
 """Install / migrate setup for Ecommerce Integration.
 
 Everything this app owns but that does NOT live in a plain doctype schema —
-JSON resources, nav records, custom fields on other apps' doctypes, per-settings
-Scheduled Job Type rows and Log Settings retention — has to be (re)applied by
+JSON resources, nav records, custom fields on other apps' doctypes and per-settings
+Scheduled Job Type rows — has to be (re)applied by
 hand after `bench migrate`, because Frappe either skips it (modified-timestamp
 checks) or actively prunes it (scheduler + orphan-entity sweeps).
 
@@ -41,15 +41,6 @@ def _steps():
 	from ecommerce_integration.ecommerce_integration.doctype.floriday_settings.floriday_settings import (
 		resync_scheduled_jobs as floriday_resync_scheduled_jobs,
 	)
-	from ecommerce_integration.ecommerce_integration.doctype.shopify_allocation.shopify_allocation import (
-		ensure_packing_link_fields,
-	)
-	from ecommerce_integration.ecommerce_integration.doctype.shopify_settings.shopify_settings import (
-		ensure_log_retention as shopify_ensure_log_retention,
-	)
-	from ecommerce_integration.ecommerce_integration.doctype.shopify_settings.shopify_settings import (
-		resync_scheduled_jobs as shopify_resync_scheduled_jobs,
-	)
 
 	return (
 		# 1. Force-reload every JSON resource we ship (doctypes, workspace,
@@ -66,14 +57,9 @@ def _steps():
 		#    sync deletes them on every migrate.
 		("floriday_resync_scheduled_jobs", floriday_resync_scheduled_jobs),
 		("biflorica_resync_scheduled_jobs", biflorica_resync_scheduled_jobs),
-		("shopify_resync_scheduled_jobs", shopify_resync_scheduled_jobs),
 		# 5. Custom fields this app adds to other apps' doctypes.
 		("ensure_floriday_custom_fields", ensure_floriday_custom_fields),
 		("ensure_biflorica_custom_fields", ensure_biflorica_custom_fields),
-		("ensure_packing_link_fields", ensure_packing_link_fields),
-		# 6. Shopify API log retention lives in Frappe's Log Settings, which the
-		#    Shopify Settings form only writes on save.
-		("shopify_ensure_log_retention", shopify_ensure_log_retention),
 	)
 
 

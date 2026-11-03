@@ -44,35 +44,9 @@
    "open_in_new_tab": 1,
    "show_arrow": 0,
    "type": "Link"
-  },
-  {
-   "child": 0,
-   "collapsible": 1,
-   "icon": "setting-gear",
-   "indent": 0,
-   "keep_closed": 0,
-   "label": "Shopify Settings",
-   "link_to": "Shopify Settings",
-   "link_type": "DocType",
-   "open_in_new_tab": 1,
-   "show_arrow": 0,
-   "type": "Link"
-  },
-  {
-   "child": 0,
-   "collapsible": 1,
-   "icon": "list",
-   "indent": 0,
-   "keep_closed": 0,
-   "label": "Shopify Allocation",
-   "link_to": "Shopify Allocation",
-   "link_type": "DocType",
-   "open_in_new_tab": 1,
-   "show_arrow": 0,
-   "type": "Link"
   }
  ],
- "modified": "2026-08-24 00:00:00.000000",
+ "modified": "2026-11-03 18:00:00.000000",
  "modified_by": "Administrator",
  "module": "Ecommerce Integration",
  "module_onboarding": "Ecommerce Integration Onboarding",

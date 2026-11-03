@@ -26,6 +26,7 @@ import frappe
 # Link targets reachable from this app's tested DocTypes that no app installed in
 # CI defines. Owners, for the record:
 #   Business Unit, Farm  -> upande_core
+#   Box Type             -> upande_packhouse
 #   Consignee            -> upande_packhouse / upande_kaitet
 #   Delivery Point       -> site-side custom DocType on the Floriday sites
 #   Stem Length          -> upande_harvest (webshop stubs this one too; the
@@ -46,6 +47,7 @@ _TITLE_FIELD = [{"label": "Title", "fieldname": "title", "fieldtype": "Data"}]
 # because the code under test reads them: the post-harvest `Stem Length` master
 # is a price source, and `Shelf`/`Shelf Item` are the shelf stock source.
 STUB_DOCTYPES = {
+	"Box Type": {"fields": _TITLE_FIELD},
 	"Business Unit": {"fields": _TITLE_FIELD},
 	"Consignee": {"fields": _TITLE_FIELD},
 	"Delivery Point": {"fields": _TITLE_FIELD},
@@ -81,6 +83,7 @@ STUB_DOCTYPES = {
 
 # `Shelf.items` links to `Shelf Item`, so the child has to exist first.
 _STUB_ORDER = (
+	"Box Type",
 	"Business Unit",
 	"Consignee",
 	"Delivery Point",

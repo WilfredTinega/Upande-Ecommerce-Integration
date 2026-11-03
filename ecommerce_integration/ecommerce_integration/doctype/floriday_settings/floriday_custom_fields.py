@@ -20,10 +20,25 @@ FLORIDAY_CUSTOM_FIELDS = [
 	{
 		"dt": "Sales Order",
 		"df": {
-			"fieldname": "custom_floriday_delivery_id",
-			"label": "Floriday Delivery ID",
+			"fieldname": "custom_floriday_order_id",
+			"label": "Floriday Order ID",
 			"fieldtype": "Data",
+			"read_only": 1,
+			"no_copy": 1,
+			"search_index": 1,
 			"insert_after": "custom_delivery_point",
+		},
+	},
+	{
+		"dt": "Quotation",
+		"df": {
+			"fieldname": "custom_floriday_order_id",
+			"label": "Floriday Order ID",
+			"fieldtype": "Data",
+			"read_only": 1,
+			"no_copy": 1,
+			"search_index": 1,
+			"insert_after": "valid_till",
 		},
 	},
 	{
@@ -40,7 +55,7 @@ FLORIDAY_CUSTOM_FIELDS = [
 			# Written after the Sales Order is submitted, so it has to be writable
 			# on a submitted document.
 			"allow_on_submit": 1,
-			"insert_after": "custom_floriday_delivery_id",
+			"insert_after": "custom_floriday_order_id",
 		},
 	},
 	{
@@ -108,6 +123,17 @@ FLORIDAY_CUSTOM_FIELDS = [
 			"fieldtype": "Link",
 			"options": "Warehouse",
 			"insert_after": "warehouse",
+		},
+	},
+	{
+		"dt": "Sales Order Item",
+		"df": {
+			"fieldname": "custom_floriday_rate",
+			"label": "Floriday Rate / Stem",
+			"fieldtype": "Currency",
+			"read_only": 1,
+			"no_copy": 1,
+			"insert_after": "rate",
 		},
 	},
 	{

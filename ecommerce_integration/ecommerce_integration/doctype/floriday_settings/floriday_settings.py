@@ -56,6 +56,9 @@ class FloridaySettings(Document):
 	if TYPE_CHECKING:
 		from frappe.types import DF
 
+		from ecommerce_integration.ecommerce_integration.doctype.floriday_box_type.floriday_box_type import (
+			FloridayBoxType,
+		)
 		from ecommerce_integration.ecommerce_integration.doctype.floriday_stock_view.floriday_stock_view import (
 			FloridayStockView,
 		)
@@ -100,12 +103,14 @@ class FloridaySettings(Document):
 		]
 		batch_last_run: DF.Datetime | None
 		batch_next_run: DF.Datetime | None
+		box_type_map: DF.Table[FloridayBoxType]
 		business_unit: DF.Link | None
 		client_id: DF.Data
 		client_secret: DF.Data
 		company: DF.Link | None
 		create_orders_as_quotation: DF.Check
 		customer: DF.Link | None
+		default_box_type: DF.Link | None
 		default_farm: DF.Link | None
 		fi_cron_format: DF.Data | None
 		fi_enabled: DF.Check
@@ -125,6 +130,9 @@ class FloridaySettings(Document):
 		fi_last_run: DF.Datetime | None
 		fi_next_run: DF.Datetime | None
 		floriday_warehouses: DF.Table[FloridayWarehouse]
+		fulfil_on: DF.Literal[
+			"Sales Order Submit", "Order Pick List Submit", "Farm Pack List Submit", "Box Label Generated"
+		]
 		grant_type: DF.Data
 		of_cron_format: DF.Data | None
 		of_enabled: DF.Check

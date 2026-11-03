@@ -76,6 +76,9 @@
   "sales_order",
   "column_break_qhfg",
   "period",
+  "box_type_section",
+  "default_box_type",
+  "box_type_map",
   "so_scheduler_section",
   "so_last_run",
   "so_column_break_runtime",
@@ -87,6 +90,7 @@
   "of_enabled",
   "order_fullfilment",
   "of_period",
+  "fulfil_on",
   "of_scheduler_section",
   "of_last_run",
   "of_column_break_runtime",
@@ -497,6 +501,23 @@
    "label": "Period(Hours)"
   },
   {
+   "fieldname": "box_type_section",
+   "fieldtype": "Section Break",
+   "label": "Box Type"
+  },
+  {
+   "fieldname": "default_box_type",
+   "fieldtype": "Link",
+   "label": "Default Box Type",
+   "options": "Box Type"
+  },
+  {
+   "fieldname": "box_type_map",
+   "fieldtype": "Table",
+   "label": "Box Type by VBN Package Code",
+   "options": "Floriday Box Type"
+  },
+  {
    "fieldname": "so_scheduler_section",
    "fieldtype": "Section Break",
    "label": "Scheduler Run Time"
@@ -554,6 +575,13 @@
    "fieldname": "of_period",
    "fieldtype": "Int",
    "label": "Period(Hours)"
+  },
+  {
+   "default": "Sales Order Submit",
+   "fieldname": "fulfil_on",
+   "fieldtype": "Select",
+   "label": "Fulfil On",
+   "options": "Sales Order Submit\nOrder Pick List Submit\nFarm Pack List Submit\nBox Label Generated"
   },
   {
    "fieldname": "of_scheduler_section",
@@ -858,7 +886,7 @@
  "index_web_pages_for_search": 1,
  "issingle": 1,
  "links": [],
- "modified": "2026-09-01 21:18:56.786322",
+ "modified": "2026-11-03 18:00:00.000000",
  "modified_by": "Administrator",
  "module": "Ecommerce Integration",
  "name": "Floriday Settings",

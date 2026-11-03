@@ -6,6 +6,11 @@ import frappe
 import requests
 from frappe.utils import add_to_date, now_datetime
 
+from ecommerce_integration.ecommerce_integration.utils import (
+	FLORIDAY_ORDER_ID_FIELD,
+	floriday_order_id_of,
+)
+
 
 def safe_log(message, title=None, log_type="info"):
 	"""Log via the logger, truncating to avoid CharacterLengthExceededError;
@@ -31,14 +36,15 @@ def safe_log(message, title=None, log_type="info"):
 
 
 def get_delivery_gln_from_sales_order(sales_order):
-	"""Return the Sales Order's custom_floriday_delivery_id, or None if missing."""
+	"""Return the GLN of the Sales Order's Delivery Point, or None if missing."""
 	try:
-		gln = sales_order.get("custom_floriday_delivery_id")
+		delivery_point = sales_order.get("custom_delivery_point")
+		gln = delivery_point and frappe.db.get_value(
+			"Delivery Point", delivery_point, "custom_floriday_delivery_point_id"
+		)
 		if gln:
 			return gln
-		safe_log(
-			f"Sales Order {sales_order.name} has no custom_floriday_delivery_id", "Missing GLN", "warning"
-		)
+		safe_log(f"Sales Order {sales_order.name} has no Delivery Point GLN", "Missing GLN", "warning")
 		return None
 	except Exception as e:
 		safe_log(f"Error getting GLN for sales order: {e!s}", "GLN Lookup Error", "error")
@@ -145,7 +151,7 @@ def build_delivery_order_index(base_url, headers):
 	order's own delivery-location GLN — sending a different GLN fails with
 	"different country" (and an order with no delivery order fails with "No
 	delivery orders found"). So we read the delivery orders first and key them by
-	salesOrderId (which equals the SO's po_no).
+	salesOrderId (the SO's Floriday Order ID).
 
 	Returns { salesOrderId: {
 	    "delivery_order_id", "gln", "fulfillment_request_id",
@@ -294,32 +300,37 @@ def order_fullment(only_sales_order: str | None = None):
 		# ── Query Sales Orders (Last 24 hours) ──────────────────────────────
 		# Floriday Sales Orders all book under the customer configured on Floriday
 		# Settings (e.g. Royal FloraHolland) and carry the Floriday salesOrderId in
-		# po_no — that pair identifies them. (The legacy filter on the customer's
+		# custom_floriday_order_id (po_no on orders imported before that field) —
+		# that pair identifies them. (The legacy filter on the customer's
 		# custom_floriday_id no longer works now that every order shares one
-		# customer.) Pull the SO's own custom_floriday_delivery_id when present so
-		# fulfillment can use the buyer GLN without relying on the Delivery Point.
+		# customer.)
 		floriday_customer = settings.get("customer")
 		if not floriday_customer:
 			step("STEP 3 FAILED: Customer not configured in Floriday Settings")
 			return {"status": "error", "message": "Customer not configured in Floriday Settings"}
 
-		has_so_gln = frappe.db.has_column("Sales Order", "custom_floriday_delivery_id")
-		gln_select = "so.custom_floriday_delivery_id" if has_so_gln else "NULL"
+		# The id column, or the legacy po_no alone where the field is not there yet.
+		id_select = (
+			"COALESCE(NULLIF(so.custom_floriday_order_id, ''), so.po_no)"
+			if frappe.db.has_column("Sales Order", FLORIDAY_ORDER_ID_FIELD)
+			else "so.po_no"
+		)
 		# One named order, or the whole window. Both are hard-coded fragments
 		# chosen here; every value is a bound parameter.
 		scope_sql = "so.name = %(only_sales_order)s" if only_sales_order else "so.creation >= %(start_time)s"
-		# `gln_select` and `scope_sql` are hard-coded column/predicate expressions
+		reached_sql = _fulfil_on_reached_sql()
+		# `id_select`, `scope_sql` and `reached_sql` are hard-coded column/predicate expressions
 		# chosen above, never user input; the values are bound parameters.
 		# nosemgrep: frappe-sql-format-injection
 		sales_orders = frappe.db.sql(
 			f"""
-            SELECT so.name, so.po_no, so.customer, so.delivery_date, so.status,
-                   so.creation, so.custom_delivery_point,
-                   {gln_select} AS custom_floriday_delivery_id
+            SELECT so.name, {id_select} AS floriday_order_id, so.customer, so.delivery_date, so.status,
+                   so.creation, so.custom_delivery_point
             FROM `tabSales Order` so
             WHERE so.docstatus = 1
-              AND so.po_no != ''
+              AND IFNULL({id_select}, '') != ''
               AND {scope_sql}
+              AND {reached_sql}
               AND so.customer = %(customer)s
             ORDER BY so.creation DESC
         """,
@@ -344,8 +355,9 @@ def order_fullment(only_sales_order: str | None = None):
 					"status": "error",
 					"message": (
 						f"{only_sales_order} is not eligible for Floriday fulfillment — it must be "
-						f"submitted, carry the Floriday order id in po_no, and be booked under "
-						f"'{floriday_customer}' (the Customer on Floriday Settings)."
+						f"submitted, carry a Floriday Order ID, be booked under "
+						f"'{floriday_customer}' (the Customer on Floriday Settings), and have "
+						f"reached '{_fulfil_on()}' (Fulfil On on Floriday Settings)."
 					),
 					"results": [],
 					"summary": {
@@ -388,7 +400,7 @@ def order_fullment(only_sales_order: str | None = None):
 
 		for so in sales_orders:
 			sales_order_name = so.name
-			floriday_order_id = so.po_no
+			floriday_order_id = so.floriday_order_id
 			step(f"STEP 4: Processing {sales_order_name} | fulfillmentOrderId={floriday_order_id}")
 
 			try:
@@ -485,7 +497,7 @@ def order_fullment(only_sales_order: str | None = None):
 				delivery_remarks = get_delivery_remarks(sales_order)
 
 				# Generate a new UUID for the fulfillmentOrderId — this is OUR identifier for this fulfillment,
-				# NOT the buyer's salesOrderId (floriday_order_id). Reusing po_no causes the 400 error.
+				# NOT the buyer's salesOrderId (floriday_order_id). Reusing it causes the 400 error.
 				new_fulfillment_order_id = str(uuid.uuid4())
 				step(
 					f"  STEP 4c: fulfillmentRequestId={fulfillment_request_id}, new fulfillmentOrderId={new_fulfillment_order_id}"
@@ -702,20 +714,14 @@ def is_floriday_sales_order(doc):
 	"""True when this Sales Order was imported from Floriday.
 
 	Two signals together, because either alone gives false positives: the
-	customer must be the one Floriday Settings books every order under, AND
-	`po_no` must be a Floriday salesOrderId, which is a UUID. A manually raised
-	order for the same customer carries a human purchase-order number, so it is
-	not mistaken for one of ours and never posted to Floriday.
+	customer must be the one Floriday Settings books every order under, AND the
+	order must carry a Floriday salesOrderId (custom_floriday_order_id, or a
+	UUID po_no on orders imported before that field). A manually raised order
+	for the same customer carries neither, so it is never posted to Floriday.
 	"""
 	if getattr(doc, "doctype", None) != "Sales Order":
 		return False
-
-	po_no = (doc.get("po_no") or "").strip()
-	if not po_no:
-		return False
-	try:
-		uuid.UUID(po_no)
-	except (ValueError, AttributeError, TypeError):
+	if not floriday_order_id_of(doc):
 		return False
 
 	if not frappe.db.exists("DocType", "Floriday Settings"):
@@ -771,42 +777,115 @@ def fulfill_sales_order(sales_order: str):
 	}
 
 
-def fulfill_floriday_sales_order_on_submit(doc, method=None):
-	"""Submitting a Floriday Sales Order fulfills it on Floriday.
+# Floriday Settings > Fulfil On: the packhouse step that sends the fulfilment.
+FULFIL_ON_SALES_ORDER = "Sales Order Submit"
+FULFIL_ON_ORDER_PICK_LIST = "Order Pick List Submit"
+FULFIL_ON_FARM_PACK_LIST = "Farm Pack List Submit"
+FULFIL_ON_BOX_LABEL = "Box Label Generated"
+
+
+def _fulfil_on():
+	if not frappe.db.exists("DocType", "Floriday Settings"):
+		return None
+	return frappe.db.get_single_value("Floriday Settings", "fulfil_on") or FULFIL_ON_SALES_ORDER
+
+
+def _queue_fulfilment(sales_order):
+	"""Queue the fulfilment of one Sales Order (doc or name), if it is an unfulfilled
+	Floriday order.
 
 	Queued rather than run inline. Fulfilling needs the delivery order Floriday
 	built for the sales order, which means paging `/delivery-orders/sync` — an
-	unbounded number of 40s HTTP calls. Doing that inside `on_submit` would hang
-	the submit behind Floriday's latency, and any exception escaping the hook
-	would roll the submit back: the operator's order would silently fail to
-	submit because a remote API was slow. So the submit commits first
-	(`enqueue_after_commit`) and the fulfillment follows it.
+	unbounded number of 40s HTTP calls. Doing that inside a submit would hang it
+	behind Floriday's latency, and any exception escaping the hook would roll the
+	submit back. So the triggering document commits first
+	(`enqueue_after_commit`) and the fulfilment follows it. One job per order
+	(`deduplicate`): a Farm Pack List writes several Box Labels at once.
 
 	Failures are not swallowed — `_fulfill_queued` writes the reason onto the
-	Sales Order's own timeline, where the person who submitted it will see it.
+	Sales Order's own timeline.
 	"""
+	if isinstance(sales_order, str):
+		if not frappe.db.exists("Sales Order", sales_order):
+			return
+		doc = frappe.get_doc("Sales Order", sales_order)
+		if doc.docstatus != 1:
+			return
+	elif sales_order:
+		doc = sales_order
+	else:
+		return
 	if not is_floriday_sales_order(doc):
 		return
 	if doc.get("custom_floriday_fulfillment_order_id"):
 		return
 
+	sales_order = doc.name
 	frappe.enqueue(
 		"ecommerce_integration.ecommerce_integration.doctype.floriday_settings."
 		"floriday_order_fullfillment._fulfill_queued",
 		queue="short",
 		timeout=1500,
 		enqueue_after_commit=True,
-		sales_order=doc.name,
+		job_id=f"floriday-fulfil-{sales_order}",
+		deduplicate=True,
+		sales_order=sales_order,
 	)
 	frappe.msgprint(
-		frappe._("Fulfilling {0} on Floriday…").format(doc.name),
+		frappe._("Fulfilling {0} on Floriday…").format(sales_order),
 		alert=True,
 		indicator="blue",
 	)
 
 
+def fulfill_floriday_sales_order_on_submit(doc, method=None):
+	if _fulfil_on() == FULFIL_ON_SALES_ORDER:
+		_queue_fulfilment(doc)
+
+
+def fulfill_on_order_pick_list_submit(doc, method=None):
+	if _fulfil_on() == FULFIL_ON_ORDER_PICK_LIST:
+		_queue_fulfilment(doc.get("sales_order"))
+
+
+def fulfill_on_farm_pack_list_submit(doc, method=None):
+	if _fulfil_on() == FULFIL_ON_FARM_PACK_LIST:
+		_queue_fulfilment(doc.get("sales_order"))
+
+
+def fulfill_on_box_label_insert(doc, method=None):
+	if _fulfil_on() != FULFIL_ON_BOX_LABEL:
+		return
+	sales_order = None
+	if doc.get("order_pick_list"):
+		sales_order = frappe.db.get_value("Order Pick List", doc.order_pick_list, "sales_order")
+	if not sales_order and doc.get("farm_pack_lis"):
+		sales_order = frappe.db.get_value("Farm Pack List", doc.farm_pack_lis, "sales_order")
+	_queue_fulfilment(sales_order)
+
+
+def _fulfil_on_reached_sql():
+	"""SQL condition: the Fulfil On step has happened for Sales Order `so`.
+
+	The bulk run (button and schedule) fulfils only orders that reached the step,
+	so it never sends an order the floor has not picked / packed yet.
+	"""
+	step = _fulfil_on()
+	if step == FULFIL_ON_ORDER_PICK_LIST and frappe.db.exists("DocType", "Order Pick List"):
+		return "EXISTS (SELECT 1 FROM `tabOrder Pick List` opl WHERE opl.sales_order = so.name AND opl.docstatus = 1)"
+	if step == FULFIL_ON_FARM_PACK_LIST and frappe.db.exists("DocType", "Farm Pack List"):
+		return "EXISTS (SELECT 1 FROM `tabFarm Pack List` fpl WHERE fpl.sales_order = so.name AND fpl.docstatus = 1)"
+	if step == FULFIL_ON_BOX_LABEL and frappe.db.exists("DocType", "Box Label"):
+		return (
+			"EXISTS (SELECT 1 FROM `tabBox Label` bl"
+			" JOIN `tabOrder Pick List` opl ON opl.name = bl.order_pick_list"
+			" WHERE opl.sales_order = so.name)"
+		)
+	return "1 = 1"
+
+
 def _fulfill_queued(sales_order):
-	"""Background half of `fulfill_floriday_sales_order_on_submit`.
+	"""Background half of `_queue_fulfilment`.
 
 	Whatever happens is written to the Sales Order's timeline. A fulfillment that
 	quietly does nothing is worse than one that fails loudly: the operator

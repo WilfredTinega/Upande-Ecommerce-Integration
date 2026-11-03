@@ -22,9 +22,17 @@ import uuid
 from unittest.mock import patch
 
 import frappe
+from frappe import _dict
 
 from ecommerce_integration.ecommerce_integration.doctype.floriday_settings.floriday_order_fullfillment import (
+	FULFIL_ON_BOX_LABEL,
+	FULFIL_ON_FARM_PACK_LIST,
+	FULFIL_ON_ORDER_PICK_LIST,
+	FULFIL_ON_SALES_ORDER,
 	fulfill_floriday_sales_order_on_submit,
+	fulfill_on_box_label_insert,
+	fulfill_on_farm_pack_list_submit,
+	fulfill_on_order_pick_list_submit,
 	fulfill_sales_order,
 	is_floriday_sales_order,
 )
@@ -76,6 +84,9 @@ class TestFloridayOrderRecognition(IntegrationTestCase):
 	def test_uuid_po_no_and_matching_customer_is_a_floriday_order(self):
 		self.assertTrue(is_floriday_sales_order(_order(str(uuid.uuid4()))))
 
+	def test_floriday_order_id_with_a_blank_po_no_is_a_floriday_order(self):
+		self.assertTrue(is_floriday_sales_order(_order("", custom_floriday_order_id=str(uuid.uuid4()))))
+
 	def test_a_human_purchase_order_number_is_not_ours(self):
 		"""The same customer can place ordinary orders; those must never be posted.
 
@@ -102,9 +113,10 @@ class TestFulfillOnSubmit(IntegrationTestCase):
 	"""What submitting actually does."""
 
 	def setUp(self):
-		patcher = patch(f"{FULFILLMENT_MODULE}.is_floriday_sales_order", return_value=True)
-		patcher.start()
-		self.addCleanup(patcher.stop)
+		for target, value in (("is_floriday_sales_order", True), ("_fulfil_on", FULFIL_ON_SALES_ORDER)):
+			patcher = patch(f"{FULFILLMENT_MODULE}.{target}", return_value=value)
+			patcher.start()
+			self.addCleanup(patcher.stop)
 
 	def test_submitting_queues_the_fulfillment_after_commit(self):
 		"""Queued, not inline — and only after the submit itself has committed.
@@ -138,6 +150,54 @@ class TestFulfillOnSubmit(IntegrationTestCase):
 		):
 			fulfill_floriday_sales_order_on_submit(_order("PO-1"))
 		enqueue.assert_not_called()
+
+
+class TestFulfilOnSetting(IntegrationTestCase):
+	"""Floriday Settings > Fulfil On picks the one step that sends the fulfilment."""
+
+	def fire(self, step, hook, doc):
+		with (
+			patch(f"{FULFILLMENT_MODULE}._fulfil_on", return_value=step),
+			patch(f"{FULFILLMENT_MODULE}._queue_fulfilment") as queue,
+			patch.object(frappe.db, "get_value", return_value="SAL-ORD-TEST-0001"),
+		):
+			hook(doc)
+		return queue
+
+	def test_each_step_fulfils_only_when_it_is_the_chosen_one(self):
+		so = _order(str(uuid.uuid4()))
+		opl = _dict(sales_order="SAL-ORD-TEST-0001")
+		fpl = _dict(sales_order="SAL-ORD-TEST-0001")
+		label = _dict(order_pick_list="OPL-0001")
+		hooks = {
+			FULFIL_ON_SALES_ORDER: (fulfill_floriday_sales_order_on_submit, so),
+			FULFIL_ON_ORDER_PICK_LIST: (fulfill_on_order_pick_list_submit, opl),
+			FULFIL_ON_FARM_PACK_LIST: (fulfill_on_farm_pack_list_submit, fpl),
+			FULFIL_ON_BOX_LABEL: (fulfill_on_box_label_insert, label),
+		}
+		for chosen in hooks:
+			for step, (hook, doc) in hooks.items():
+				with self.subTest(chosen=chosen, step=step):
+					queue = self.fire(chosen, hook, doc)
+					self.assertEqual(queue.called, step == chosen)
+
+	def test_a_box_label_resolves_its_sales_order_through_the_pick_list(self):
+		queue = self.fire(FULFIL_ON_BOX_LABEL, fulfill_on_box_label_insert, _dict(order_pick_list="OPL-0001"))
+		queue.assert_called_once_with("SAL-ORD-TEST-0001")
+
+	def test_one_job_per_order_however_many_labels(self):
+		"""A Farm Pack List writes several Box Labels; only one fulfilment may go out."""
+		doc = _order(str(uuid.uuid4()))
+		with (
+			patch(f"{FULFILLMENT_MODULE}.is_floriday_sales_order", return_value=True),
+			patch(f"{FULFILLMENT_MODULE}.frappe.enqueue") as enqueue,
+			patch(f"{FULFILLMENT_MODULE}.frappe.msgprint"),
+			patch(f"{FULFILLMENT_MODULE}._fulfil_on", return_value=FULFIL_ON_SALES_ORDER),
+		):
+			fulfill_floriday_sales_order_on_submit(doc)
+		_args, kwargs = enqueue.call_args
+		self.assertTrue(kwargs.get("deduplicate"))
+		self.assertEqual(kwargs.get("job_id"), f"floriday-fulfil-{doc.name}")
 
 
 class TestFulfillSingleSalesOrder(IntegrationTestCase):
@@ -190,3 +250,14 @@ class TestOnSubmitHookIsRegistered(IntegrationTestCase):
 			any("fulfill_floriday_sales_order_on_submit" in h for h in handlers),
 			f"on_submit handlers: {handlers}",
 		)
+
+	def test_packhouse_steps_are_hooked(self):
+		doc_events = frappe.get_hooks("doc_events")
+		for doctype, event, handler in (
+			("Order Pick List", "on_submit", "fulfill_on_order_pick_list_submit"),
+			("Farm Pack List", "on_submit", "fulfill_on_farm_pack_list_submit"),
+			("Box Label", "after_insert", "fulfill_on_box_label_insert"),
+		):
+			with self.subTest(doctype=doctype):
+				handlers = doc_events.get(doctype, {}).get(event, [])
+				self.assertTrue(any(handler in h for h in handlers), f"{doctype}.{event}: {handlers}")
