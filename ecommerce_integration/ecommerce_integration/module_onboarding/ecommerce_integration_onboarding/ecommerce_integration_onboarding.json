@@ -12,24 +12,12 @@
  "doctype": "Module Onboarding",
  "idx": 0,
  "is_complete": 0,
- "modified": "2026-08-28 16:21:21.878853",
+ "modified": "2026-11-03 18:00:00.000000",
  "modified_by": "Administrator",
  "module": "Ecommerce Integration",
  "name": "Ecommerce Integration Onboarding",
  "owner": "Administrator",
  "steps": [
-  {
-   "step": "Connect Shopify"
-  },
-  {
-   "step": "Map Shopify Products"
-  },
-  {
-   "step": "Review Synced Shopify Orders"
-  },
-  {
-   "step": "Fulfil a Shopify Allocation"
-  },
   {
    "step": "Connect Floriday"
   },

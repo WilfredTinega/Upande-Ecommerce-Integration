@@ -114,10 +114,13 @@ after_install = "ecommerce_integration.setup.install.after_install"
 #   * collapsing duplicate Desk tiles down to the single icon the app ships;
 #   * re-upserting the per-Settings Scheduled Job Type rows that Frappe's
 #     scheduler sync prunes on every migrate;
-#   * re-applying the Floriday / Biflorica / Shopify custom fields this app adds
-#     to other apps' doctypes;
-#   * re-asserting the Shopify API log retention in Frappe's Log Settings.
+#   * re-applying the Floriday / Biflorica custom fields this app adds to other
+#     apps' doctypes.
 after_migrate = "ecommerce_integration.setup.install.after_migrate"
+
+# The Shopify connector moved to the shopify_integration app; this hands a site's
+# Shopify data over to it before migrate's orphan sweep can drop the DocTypes.
+before_migrate = "ecommerce_integration.setup.shopify_split.before_migrate"
 
 # Uninstallation
 # ------------
@@ -183,17 +186,24 @@ doc_events = {
 		# on Biflorica. upande_packhouse reprices Roses orders from Item Price on
 		# validate, so this runs after it and puts the agreed rate back.
 		"before_save": "ecommerce_integration.ecommerce_integration.doctype.biflorica_setting.biflorica_setting.hold_biflorica_deal_price",
-		# Submitting is the confirmation step for both channels: a Biflorica
-		# preorder is approved on Biflorica, and a Floriday order is fulfilled on
-		# Floriday. Biflorica's runs inline and blocks the submit if it is
-		# rejected (approval is the whole point of the submit); Floriday's is
-		# queued after commit, because fulfilling means paging Floriday's
-		# delivery orders and the submit must not hang on — or be rolled back
-		# by — a slow remote call.
+		# Submitting is the confirmation step for Biflorica: a preorder is approved
+		# on Biflorica inline, and the submit is blocked if it is rejected. A
+		# Floriday order is fulfilled on Floriday at the step Floriday Settings >
+		# Fulfil On names — this submit, or the packhouse steps below — queued
+		# after commit so no step hangs on, or is rolled back by, a slow remote call.
 		"on_submit": [
 			"ecommerce_integration.ecommerce_integration.doctype.biflorica_setting.biflorica_setting.confirm_biflorica_predeal_on_submit",
 			"ecommerce_integration.ecommerce_integration.doctype.floriday_settings.floriday_order_fullfillment.fulfill_floriday_sales_order_on_submit",
 		],
+	},
+	"Order Pick List": {
+		"on_submit": "ecommerce_integration.ecommerce_integration.doctype.floriday_settings.floriday_order_fullfillment.fulfill_on_order_pick_list_submit",
+	},
+	"Farm Pack List": {
+		"on_submit": "ecommerce_integration.ecommerce_integration.doctype.floriday_settings.floriday_order_fullfillment.fulfill_on_farm_pack_list_submit",
+	},
+	"Box Label": {
+		"after_insert": "ecommerce_integration.ecommerce_integration.doctype.floriday_settings.floriday_order_fullfillment.fulfill_on_box_label_insert",
 	},
 }
 
@@ -309,13 +319,6 @@ export_python_type_annotations = True
 # Require all whitelisted methods to have type annotations
 # Disabled: the migrated Floriday/Biflorica controllers are not yet annotated.
 require_type_annotated_api_methods = False
-
-# Registers the Shopify API log with Frappe's Log Settings so old entries are
-# cleared automatically. The retention shown here is only the seeded default —
-# Shopify Settings > Keep Logs For (Days) writes the live value into Log Settings.
-default_log_clearing_doctypes = {
-	"Shopify API Error Log": 30,
-}
 
 # Translation
 # ------------

@@ -17,6 +17,8 @@ This app reads no upande_webshop doctype at all. Enabled stock lives in its own
 plus the post-harvest `Stem Length.price` master.
 """
 
+import re
+
 import frappe
 from frappe.utils import cint
 
@@ -103,3 +105,19 @@ def _resolve_price_list(settings_doctype=None):
 
 	cache[settings_doctype] = resolved
 	return resolved
+
+
+# Floriday's salesOrderId on an imported order. It used to live in `po_no`,
+# which belongs to the buyer's own purchase order number, so orders imported
+# before this field existed still carry it there.
+FLORIDAY_ORDER_ID_FIELD = "custom_floriday_order_id"
+_UUID = re.compile(r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")
+
+
+def floriday_order_id_of(doc):
+	"""The Floriday salesOrderId of an imported order, or "" for any other order."""
+	order_id = (doc.get(FLORIDAY_ORDER_ID_FIELD) or "").strip()
+	if order_id:
+		return order_id
+	po_no = (doc.get("po_no") or "").strip()
+	return po_no if _UUID.fullmatch(po_no) else ""

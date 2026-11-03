@@ -18,7 +18,6 @@ the settings the desk forms hold.
 """
 
 import json
-import re
 
 import frappe
 from frappe import _
@@ -28,13 +27,18 @@ from frappe.utils import add_days, add_to_date, cint, flt, now_datetime, nowdate
 MIN_POLL_HOURS = 1
 MAX_POLL_HOURS = 720
 
-from ecommerce_integration.ecommerce_integration.utils import create_orders_as_quotation
+from ecommerce_integration.ecommerce_integration.utils import (
+	FLORIDAY_ORDER_ID_FIELD,
+	create_orders_as_quotation,
+	floriday_order_id_of,
+)
 from ecommerce_integration.ecommerce_integration.utils.shelf_stock import shelf_stock_enabled
 
 # How each channel's orders are recognised. Biflorica stamps po_no with
 # "BIFLORICA-<id>" / "BIFLORICA-PREDEAL-<id>" (biflorica_setting.deal_po_ref).
-# Floriday stamps po_no with the Floriday salesOrderId, a UUID, and carries the
-# buyer GLN / fulfilment id in its own custom fields.
+# Floriday stamps its salesOrderId in custom_floriday_order_id (in po_no, as a
+# UUID, on orders imported before that field) and its fulfilment id in its own
+# custom field.
 FLORIDAY_UUID_LIKE = "________-____-____-____-____________"
 
 CHANNELS = {
@@ -197,7 +201,10 @@ def _channel_filters(channel_key, doctype):
 		return {"po_no": ["like", "BIFLORICA-%"]}, None
 
 	or_filters = [["po_no", "like", FLORIDAY_UUID_LIKE]]
-	for fieldname in ("custom_floriday_delivery_id", "custom_floriday_fulfillment_order_id"):
+	for fieldname in (
+		FLORIDAY_ORDER_ID_FIELD,
+		"custom_floriday_fulfillment_order_id",
+	):
 		if frappe.db.has_column(doctype, fieldname):
 			or_filters.append([fieldname, "is", "set"])
 	return {}, or_filters
@@ -240,7 +247,12 @@ def _recent_orders(channel_key, days, limit=200):
 				"currency",
 				"total_qty",
 			]
-		for optional in ("custom_consignee", "custom_ordered_stems", "custom_floriday_fulfillment_order_id"):
+		for optional in (
+			"custom_consignee",
+			"custom_ordered_stems",
+			"custom_floriday_fulfillment_order_id",
+			FLORIDAY_ORDER_ID_FIELD,
+		):
 			if frappe.db.has_column(doctype, optional):
 				fields.append(optional)
 
@@ -263,7 +275,7 @@ def _recent_orders(channel_key, days, limit=200):
 				r["channel_ref"] = po_no.split("-")[-1]
 			else:
 				r["kind"] = "Fulfilled" if r.get("custom_floriday_fulfillment_order_id") else "Order"
-				r["channel_ref"] = po_no[-8:]
+				r["channel_ref"] = floriday_order_id_of(r)[-8:]
 			rows.append(r)
 
 	rows.sort(key=lambda r: (str(r.get("transaction_date") or ""), r["name"]), reverse=True)
@@ -514,9 +526,9 @@ def _belongs_to_channel(channel_key, doc):
 	po_no = (doc.get("po_no") or "").strip()
 	if channel_key == "biflorica":
 		return po_no.startswith("BIFLORICA-")
-	if re.fullmatch(r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}", po_no):
+	if floriday_order_id_of(doc):
 		return True
-	return bool(doc.get("custom_floriday_delivery_id") or doc.get("custom_floriday_fulfillment_order_id"))
+	return bool(doc.get("custom_floriday_fulfillment_order_id"))
 
 
 @frappe.whitelist(methods=["POST"])

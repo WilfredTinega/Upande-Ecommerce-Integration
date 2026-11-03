@@ -6,8 +6,12 @@ from datetime import datetime, timedelta, timezone
 import frappe
 import requests
 from frappe import _
+from frappe.utils import cint
 
-from ecommerce_integration.ecommerce_integration.utils import create_orders_as_quotation
+from ecommerce_integration.ecommerce_integration.utils import (
+	FLORIDAY_ORDER_ID_FIELD,
+	create_orders_as_quotation,
+)
 
 _logger = frappe.logger("floriday", allow_site=True)
 
@@ -32,20 +36,21 @@ def _floriday_order_target_doctype():
 
 def _floriday_order_exists(floriday_order_id):
 	"""True if this Floriday order was already imported. Checks both a live
-	Sales Order and a draft Quotation (by po_no), so the importer stays
-	idempotent regardless of which doctype the site creates. Cancelled docs
-	(docstatus 2) don't count, so a cancelled import can be re-created.
+	Sales Order and a draft Quotation, so the importer stays idempotent
+	regardless of which doctype the site creates. Cancelled docs (docstatus 2)
+	don't count, so a cancelled import can be re-created.
 
-	po_no is a standard Sales Order field; on Quotation it must be added as a
-	custom field for de-duplication to work in Quotation mode (guarded here so
-	the check is simply skipped where the column is absent)."""
+	The id is matched on custom_floriday_order_id, and on po_no for orders
+	imported before that field existed (each guarded, so an absent column is
+	simply skipped)."""
 	if not floriday_order_id:
 		return False
 	for dt in ("Sales Order", "Quotation"):
-		if not frappe.db.has_column(dt, "po_no"):
-			continue
-		if frappe.db.exists(dt, {"po_no": floriday_order_id, "docstatus": ["!=", 2]}):
-			return True
+		for fieldname in (FLORIDAY_ORDER_ID_FIELD, "po_no"):
+			if not frappe.db.has_column(dt, fieldname):
+				continue
+			if frappe.db.exists(dt, {fieldname: floriday_order_id, "docstatus": ["!=", 2]}):
+				return True
 	return False
 
 
@@ -61,45 +66,6 @@ def log_short(msg, title="Floriday", is_error=True):
 		frappe.log_error(title=title, message=msg)
 	else:
 		_logger.info(f"[{title}] {msg}")
-
-
-def generate_custom_order_name(customer_name):
-	"""Generate a sequential per-customer order name: CustomerName-XXX."""
-	try:
-		clean_name = "".join(c for c in customer_name if c.isalnum() or c == " ").strip()
-		clean_name = clean_name.replace(" ", "-")[:20]
-
-		latest_order = frappe.db.sql(
-			"""
-            SELECT custom_order_name
-            FROM `tabSales Order`
-            WHERE customer = %s
-            AND custom_order_name LIKE %s
-            AND docstatus < 2
-            ORDER BY creation DESC
-            LIMIT 1
-        """,
-			(customer_name, f"{clean_name}-%"),
-			as_dict=True,
-		)
-
-		if latest_order and latest_order[0].custom_order_name:
-			try:
-				last_number = int(latest_order[0].custom_order_name.split("-")[-1])
-				new_number = last_number + 1
-			except (ValueError, IndexError):
-				new_number = 1
-		else:
-			new_number = 1
-
-		return f"{clean_name}-{new_number:03d}"
-
-	except Exception as e:
-		log_short(f"Order name error: {str(e)[:30]}", "Floriday Order Name Error", True)
-		from frappe.utils import now_datetime
-
-		timestamp = now_datetime().strftime("%Y%m%d%H%M%S")
-		return f"ORD-{timestamp}"
 
 
 def get_delivery_point_from_floriday_gln(gln_code):
@@ -472,14 +438,20 @@ def get_item_sales_uom_and_factor(item_code):
 	item silently blocked a real customer order (the Biflorica path has always
 	fallen back this way; only Floriday raised).
 
-	A sales_uom that IS set but has no UOM Conversion row still raises: that is a
-	contradiction in the item's own master data, and picking a factor would
-	silently mis-state the quantity.
+	A bunch UOM's name states its size ("Bunch (10)" -> 10) and that wins, the
+	same reading as Biflorica's _uom_conversion_factor and the packhouse scanner:
+	most items carry the sales UOM with no UOM Conversion row at all. The item's
+	own row is the fallback for a UOM whose name has no count; with neither, it
+	still raises rather than guess the quantity.
 	"""
 	item = frappe.get_cached_doc("Item", item_code)
 	sales_uom = item.sales_uom
-	if not sales_uom:
+	if not sales_uom or sales_uom == item.stock_uom:
 		return (item.stock_uom or "Stems"), 1
+
+	match = re.search(r"\((\d+)\)", sales_uom)
+	if match and int(match.group(1)) > 0:
+		return sales_uom, int(match.group(1))
 
 	for row in item.uoms or []:
 		if row.uom == sales_uom:
@@ -487,6 +459,36 @@ def get_item_sales_uom_and_factor(item_code):
 	raise Exception(
 		f"Item {item_code} has sales_uom={sales_uom} but no matching row in its UOM Conversion table"
 	)
+
+
+def _floriday_box_type(vbn_package_code):
+	"""Box Type for a Floriday package: the Floriday Settings map row for its VBN
+	code, else the Default Box Type. upande_packhouse requires one on every Roses
+	line, and Floriday names only the VBN code."""
+	settings = frappe.get_cached_doc("Floriday Settings")
+	for row in settings.get("box_type_map") or []:
+		if vbn_package_code and cint(row.vbn_package_code) == cint(vbn_package_code):
+			return row.box_type
+	if settings.get("default_box_type"):
+		return settings.default_box_type
+	raise Exception(
+		f"No Box Type for VBN package code {vbn_package_code} — map it on Floriday Settings "
+		"or set a Default Box Type"
+	)
+
+
+def _ensure_packrate(stems_per_box):
+	"""Packrate named by its stems-per-box number, created if missing (same shape
+	as upande_packhouse's spec._ensure_packrate). None on a site without Packrate."""
+	if not stems_per_box or not frappe.db.exists("DocType", "Packrate"):
+		return None
+	name = str(stems_per_box)
+	if not frappe.db.exists("Packrate", name):
+		packrate = frappe.new_doc("Packrate")
+		packrate.name = name
+		packrate.stems_per_box = stems_per_box
+		packrate.insert(ignore_permissions=True)
+	return name
 
 
 def _force_floriday_amounts_in_db(sales_order):
@@ -826,21 +828,86 @@ def _ensure_customer_address_from_floriday(customer, floriday_order):
 	return address.name
 
 
-def _stamp_packhouse_logistics_fields(sales_order, floriday_order, delivery_point_name):
+def _floriday_order_name(buyer, delivery_date):
+	"""Order Name the way staff write it: the buyer, then the delivery day as
+	<ISO weekday><ISO week><yy> — Tue 3 Nov 2026 is "24526". Submitting adds
+	-<SO number> (upande_packhouse misc_autopopulate.js)."""
+	year, week, weekday = delivery_date.isocalendar()
+	return f"{(buyer or '').strip().upper()} {weekday}{week:02d}{year % 100:02d}".strip()
+
+
+# Legal forms dropped when matching names: "Botanic Flower Group BV" is the
+# Consignee "Botanic Flower Group B.V", and "Sjaak van der Vijver BV" is
+# "Sjaak Van Der Vijver".
+_LEGAL_FORMS = {"bv", "nv", "ltd", "llc", "shpk", "gmbh", "sa", "srl", "bvba", "inc", "co", "limited"}
+
+
+def _name_key(name):
+	words = re.sub(r"[^0-9a-z ]", "", (name or "").lower().replace(".", "")).split()
+	while words and words[-1] in _LEGAL_FORMS:
+		words.pop()
+	return "".join(words)
+
+
+def _matching_consignee(buyer):
+	"""The existing Consignee whose name is the buyer's, ignoring case,
+	punctuation and a trailing legal form; None when there is none."""
+	key = _name_key(buyer)
+	if not key or not frappe.db.exists("DocType", "Consignee"):
+		return None
+	for name in frappe.get_all("Consignee", pluck="name"):
+		if _name_key(name) == key:
+			return name
+	return None
+
+
+def _usual_shipping_agent(delivery_point):
+	"""The Shipping Agent most Sales Orders through this Delivery Point use —
+	MITCHEL COTTS goes with MORGAN CARGO KENYA LTD. Floriday names no agent."""
+	if not delivery_point or not frappe.db.has_column("Sales Order", "custom_shipping_agent"):
+		return None
+	rows = frappe.db.sql(
+		"""SELECT custom_shipping_agent FROM `tabSales Order`
+		   WHERE custom_delivery_point = %s AND IFNULL(custom_shipping_agent, '') != ''
+		     AND docstatus < 2
+		   GROUP BY custom_shipping_agent ORDER BY COUNT(*) DESC LIMIT 1""",
+		(delivery_point,),
+	)
+	return rows[0][0] if rows else None
+
+
+def _floriday_buyer_name(organization_id, settings=None):
+	"""The buyer organisation's Floriday name, looked up once per organisation per
+	request (a sync imports many orders from the same few buyers)."""
+	if not organization_id:
+		return None
+	cache = getattr(frappe.local, "_ei_floriday_buyer_names", None)
+	if cache is None:
+		cache = frappe.local._ei_floriday_buyer_names = {}
+	if organization_id not in cache:
+		cache[organization_id] = fetch_floriday_organization_name(
+			organization_id, settings or frappe.get_cached_doc("Floriday Settings")
+		)
+	return cache[organization_id]
+
+
+def _stamp_packhouse_logistics_fields(sales_order, floriday_order, delivery_point_name, settings=None):
 	"""Fill the logistics fields upande_packhouse marks mandatory on Sales Order.
 
-	`custom_consignee`, `custom_shipping_agent`, `custom_delivery_point`,
-	`custom_drop_off_point`, `custom_truck_details` and `custom_s_number` are
-	required by upande_packhouse with `sync_on_migrate=1`, so clearing the flags
-	on a site does not survive a migrate — an imported order has to supply them
-	or it cannot be saved at all.
+	`custom_consignee`, `custom_shipping_agent`, `custom_delivery_point` and
+	`custom_drop_off_point` are required by upande_packhouse with
+	`sync_on_migrate=1`, so clearing the flags on a site does not survive a
+	migrate — an imported order has to supply them or it cannot be saved at all.
+	S_Number (`custom_s_number`, a shipping booking) and Remote Truck Details
+	(`custom_truck_details`) are left blank: Floriday names neither, and
+	upande_packhouse does not require S_Number for the Floriday customer.
 
 	Floriday carries no cargo agent, so the DELIVERY POINT (resolved from the
 	order's delivery GLN) is the only logistics party it names, and it fills the
-	agent/drop-off/truck fields. The consignee falls back to the customer, since
-	a Floriday order is shipped to the organisation that placed it. Both are
-	inferences, not data Floriday states — override them on the order if your
-	dispatch differs.
+	agent/drop-off fields. The consignee is the buyer organisation the payload
+	names (`customerOrganizationId`, resolved to its Floriday name), since every
+	order books under the one auction customer; only when that lookup fails does
+	it fall back to the customer.
 	"""
 	from ecommerce_integration.ecommerce_integration.doctype.biflorica_setting.biflorica_setting import (
 		_customer_address,
@@ -850,22 +917,21 @@ def _stamp_packhouse_logistics_fields(sales_order, floriday_order, delivery_poin
 	meta = frappe.get_meta(sales_order.doctype)
 
 	if delivery_point_name:
-		for fieldname in ("custom_drop_off_point", "custom_truck_details"):
-			if meta.has_field(fieldname) and not sales_order.get(fieldname):
-				sales_order.set(fieldname, delivery_point_name)
+		if meta.has_field("custom_drop_off_point") and not sales_order.get("custom_drop_off_point"):
+			sales_order.custom_drop_off_point = delivery_point_name
 		if meta.has_field("custom_shipping_agent") and not sales_order.get("custom_shipping_agent"):
-			agent = _find_or_create_named("Shipping Agent", delivery_point_name, ("shipping_agent", "title"))
+			agent = _usual_shipping_agent(delivery_point_name) or _find_or_create_named(
+				"Shipping Agent", delivery_point_name, ("shipping_agent", "title")
+			)
 			if agent:
 				sales_order.custom_shipping_agent = agent
 
-	# The Floriday order reference an operator sees on the Floriday UI.
-	reference = floriday_order.get("salesChannelOrderId") or floriday_order.get("salesOrderId") or ""
-	if meta.has_field("custom_s_number") and reference and not sales_order.get("custom_s_number"):
-		sales_order.custom_s_number = str(reference)[:140]
-
 	customer = sales_order.get("customer") or sales_order.get("party_name")
-	if meta.has_field("custom_consignee") and customer and not sales_order.get("custom_consignee"):
-		consignee = _find_or_create_named("Consignee", customer, ("consignee", "title"))
+	if meta.has_field("custom_consignee") and not sales_order.get("custom_consignee"):
+		buyer = _floriday_buyer_name(floriday_order.get("customerOrganizationId"), settings)
+		consignee = _matching_consignee(buyer) or _find_or_create_named(
+			"Consignee", buyer or customer, ("consignee", "title")
+		)
 		if consignee:
 			sales_order.custom_consignee = consignee
 
@@ -934,19 +1000,21 @@ def create_sales_order_from_floriday(floriday_order, warehouse, settings=None):
 		sales_order.customer = customer
 	sales_order.transaction_date = order_datetime.date()
 	sales_order.order_type = "Sales"
-	# delivery_date / po_no / po_date are Sales Order fields; on Quotation they
-	# only apply if added as custom fields (stamped where present).
+	# delivery_date / po_date are Sales Order fields; on Quotation they only
+	# apply if added as custom fields (stamped where present). po_no stays blank:
+	# it is the buyer's purchase order number, and Floriday's id has its own field.
 	if sales_order.meta.has_field("delivery_date"):
 		sales_order.delivery_date = delivery_datetime.date()
-	if sales_order.meta.has_field("po_no"):
-		sales_order.po_no = floriday_order_id
+	if sales_order.meta.has_field(FLORIDAY_ORDER_ID_FIELD):
+		sales_order.set(FLORIDAY_ORDER_ID_FIELD, floriday_order_id)
 	if sales_order.meta.has_field("po_date"):
 		sales_order.po_date = order_datetime.date()
 
 	if sales_order.meta.has_field("custom_sales_order_type"):
 		sales_order.custom_sales_order_type = _floriday_setting("sales_order_type")
 	if sales_order.meta.has_field("custom_order_name"):
-		sales_order.custom_order_name = generate_custom_order_name(customer)
+		buyer = _floriday_buyer_name(floriday_order.get("customerOrganizationId"), settings)
+		sales_order.custom_order_name = _floriday_order_name(buyer or customer, delivery_datetime.date())
 
 	# Resolve (or auto-create) the Delivery Point from the Floriday GLN.
 	# Falls back to the order's own address fields if Floriday doesn't return a name.
@@ -968,14 +1036,7 @@ def create_sales_order_from_floriday(floriday_order, warehouse, settings=None):
 	if delivery_point_name:
 		sales_order.custom_delivery_point = delivery_point_name
 
-	_stamp_packhouse_logistics_fields(sales_order, floriday_order, delivery_point_name)
-
-	# Persist the Floriday delivery GLN directly on the order document.
-	# Order fulfillment reads from this field — independent of the Delivery Point,
-	# so orders on an auto-created placeholder still get fulfilled with the correct buyer GLN.
-	# (On Quotation this only applies where the custom field has been added.)
-	if delivery_gln and frappe.db.has_column(target_dt, "custom_floriday_delivery_id"):
-		sales_order.custom_floriday_delivery_id = delivery_gln
+	_stamp_packhouse_logistics_fields(sales_order, floriday_order, delivery_point_name, settings)
 
 	# Save address details to their Custom Fields when present on this site.
 	if hasattr(sales_order, "custom_delivery_address") and delivery_address:
@@ -1071,6 +1132,30 @@ Delivery Point: {delivery_point_name or "Not resolved"}"""
 			item.warehouse = item_warehouse
 			item.custom_ordered_quantity = number_of_pieces
 			item.custom_source_warehouse = item_warehouse
+
+			# Box type, packrate and boxes: upande_packhouse blocks a Roses line
+			# without them. Floriday packs piecesPerPackage stems per package.
+			soi_meta = frappe.get_meta(item.doctype)
+			packing = floriday_order.get("packingConfiguration") or {}
+			pieces_per_box = cint(packing.get("piecesPerPackage"))
+			if soi_meta.has_field("custom_box_type"):
+				item.custom_box_type = _floriday_box_type(
+					(packing.get("package") or {}).get("vbnPackageCode")
+				)
+			if pieces_per_box:
+				if number_of_pieces % pieces_per_box != 0:
+					raise Exception(
+						f"Floriday order has {number_of_pieces} pieces — not divisible by "
+						f"{pieces_per_box} pieces per package"
+					)
+				if soi_meta.has_field("custom_number_of_boxes"):
+					item.custom_number_of_boxes = number_of_pieces // pieces_per_box
+				if soi_meta.has_field("custom_packrate"):
+					item.custom_packrate = _ensure_packrate(pieces_per_box)
+			# Per stem, so upande_packhouse keeps the agreed price instead of
+			# repricing the line from Item Price.
+			if soi_meta.has_field("custom_floriday_rate"):
+				item.custom_floriday_rate = total_price_per_piece
 
 			# Length comes off the trade item's own mapping row — the same row that
 			# resolved the item code names the length it is sold in.

@@ -4,5 +4,5 @@
 from frappe.model.document import Document
 
 
-class ShopifySubscriptionLine(Document):
+class FloridayBoxType(Document):
 	pass

@@ -1,0 +1,45 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "creation": "2026-11-03 00:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "vbn_package_code",
+  "box_type"
+ ],
+ "fields": [
+  {
+   "fieldname": "vbn_package_code",
+   "fieldtype": "Int",
+   "in_list_view": 1,
+   "label": "VBN Package Code",
+   "reqd": 1,
+   "columns": 4
+  },
+  {
+   "fieldname": "box_type",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Box Type",
+   "options": "Box Type",
+   "reqd": 1,
+   "columns": 6
+  }
+ ],
+ "grid_page_length": 50,
+ "index_web_pages_for_search": 1,
+ "istable": 1,
+ "links": [],
+ "modified": "2026-11-03 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Ecommerce Integration",
+ "name": "Floriday Box Type",
+ "owner": "Administrator",
+ "permissions": [],
+ "row_format": "Dynamic",
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": []
+}
